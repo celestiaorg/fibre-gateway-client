@@ -1,0 +1,89 @@
+{
+  "data": "byte i is the top byte of the wrapping uint32 product i * 2654435761",
+  "vectors": [
+    {
+      "size": 1,
+      "data_sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+      "row_size": 64,
+      "blob_id": "00a5aa0ec592fe0e8bdd97ad1c303d5ff25baec8f520dfc61c3c351896450a43e5",
+      "row_root_siblings": [
+        "63cd88b132fa7e1fb30bd6c7a1b3c02a5047027efa460522d19a3d1a32d9c497",
+        "8430b688fa97dc9aa23ca83e043cbc126a63e984f0b47501f815f61ca7b0503b"
+      ],
+      "row_root": "d1bb114eae759b7c4f7edc62e3eba3c358fbf54e9c071a3d0aaf884e89c10d5e",
+      "rlc_root": "f5cdb405faf8c1b50aa38f4ab0ef3d83e715e3bed58ff2608d5bf7bd29fccf94"
+    },
+    {
+      "size": 5000,
+      "data_sha256": "7234cfea54fc6bcd85f9284a81b0edf342d27c1aa87431e5b2a5c3a6f02116e0",
+      "row_size": 64,
+      "blob_id": "00aa5172a5328bfef46c21e81507dae952484b2238c4c65db1f26813a56c9e1a8d",
+      "row_root_siblings": [
+        "db3f9c4a58dec38bc70f99bde77b95f6671e2c0aa4ab1ac8fe8a5e348f1f266e",
+        "fb0a4a39a826eaac878bba06884297cc2ed65d4d222715b7eebafc4d476b04c3"
+      ],
+      "row_root": "9ea4f57dc489a4a866a3ff76bbe53c91e707c1faa5ac653a040a67e0ecc051fb",
+      "rlc_root": "c0c9c3e81449fcbfb17103384eb1882155c98a15bf31adeef5239c6ec2e52d18"
+    },
+    {
+      "size": 262139,
+      "data_sha256": "34b230073d428a9683cc1f1827b0b857b1f08393c189e87208489b3d7d8d5ca8",
+      "row_size": 64,
+      "blob_id": "00cdedc4ef940d403be62f020ca2fc4ab3a8c480f2916943902abaa514f18963df",
+      "row_root_siblings": [
+        "67337f8a5bda84ef51b09dd5dd4f4d6d22a6442102b4c94ae59c5dc096522e19",
+        "954159e22ed1402c178dd7209c5f65820311108808f2ce09cb7bcbecd667ef46"
+      ],
+      "row_root": "c3e8c93490b5bea6957b1cc8ea14515523b0b6609ca6033e15b2e8317fed771a",
+      "rlc_root": "6debf8a5a07b151feb835220ea53549d0814104c0c16d354bece2458ecd19ca1"
+    },
+    {
+      "size": 262140,
+      "data_sha256": "46e7f578484fbe7d05231883291db56e1a6b2d0d4404c711db82fae271976166",
+      "row_size": 128,
+      "blob_id": "002e7cf475cb1bfe3f443919a0f131940a8c5625c0a2f0970a610801d9268708d6",
+      "row_root_siblings": [
+        "0ec524ed42ec84a89a0c84c1e8882e665e46181fc9a887c8d09ee0fffa9f420d",
+        "9e59d42d1beac17ac546d313d410eb81705d79df6c7d263f539bc3a7ad08896c"
+      ],
+      "row_root": "1ea12a0db5874d0d7a447ba3d07f9b7232e3df029e144ed9f81d608d64023a92",
+      "rlc_root": "3ddbabbb9bd328e3891ee81e2a03c75c41c62fb3f9d88a4fc0d82f6c3bbcabec"
+    },
+    {
+      "size": 1048576,
+      "data_sha256": "ca6073392ee71dbd1a2d356c3caa233f8f828ae17f8f8ba8570ee3491be128ab",
+      "row_size": 320,
+      "blob_id": "006be5fc1a521d478e66488235b65bbae7ff140d27f88f0de39f4c20ebee1eb2d2",
+      "row_root_siblings": [
+        "bd2e74455ac55f92aa30f33a0e260c9797dfc5c8f550e78834ddc407111084dd",
+        "3285f512e6f225a6c2806334cea6698e1e32f14d4074668c0c8e86561ac6c614"
+      ],
+      "row_root": "7b68e192827958379522bce9a041dc611b84a0d0836479fced10ecc3fd4b1890",
+      "rlc_root": "dd407e107902f564975f73fed481ca0eccb3b212da6d435d89a43bd971659ea7"
+    },
+    {
+      "size": 33554427,
+      "data_sha256": "156a933348ebae7ad6184fb0dcca2acd65440936ea9a405c8a90c2b4cfabaf48",
+      "row_size": 8192,
+      "blob_id": "00cfc476ac39a6becb1c748901b0754c21ac93b8fc99f9844f02fcdf645c8b247b",
+      "row_root_siblings": [
+        "5b47dc78c2b5481bbb6e71b6b6be67e5d9a3f91e8142db3a53dd26aab963cb78",
+        "bddfceb85274020ea0b618056b6abea45fb4fc04a3d9ada3820e59ea7652fe25"
+      ],
+      "row_root": "3e40e6b1165fb69c4e80c52b96420681adcc82f1081a7f0e63eaa94b493d71ec",
+      "rlc_root": "6792eeafec367d0d51a43adddc932f0051102ea73e7ba0a1399e240d76166a61"
+    },
+    {
+      "size": 134217723,
+      "data_sha256": "69ec80fa31e70fdc62c652e12dbb6d53b0eb9d81607aa6dbf639a396a6bef4f5",
+      "row_size": 32768,
+      "blob_id": "0036af67d7d2270c70c7ef8142d3c2f2e5f0a062416334e700f621aeb95dc2344a",
+      "row_root_siblings": [
+        "539e96c9b6886f9bfae5f89978f63c7433f291dfba196e58baf4a270b4ba050b",
+        "240c9148d4ff4620f4652c340011b8531a57d38ea8b78d7dbb145a42984d6b02"
+      ],
+      "row_root": "05228362058a5690b8d95debe6458f93f30e745bf05673e30d08cf0fb0dfde3a",
+      "rlc_root": "1aa3b2a7e0da4943da1891fda676b81dd99ca0ff66543fbd27d64bbff702feef"
+    }
+  ]
+}

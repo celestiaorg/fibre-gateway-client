@@ -1,0 +1,375 @@
+openapi: 3.1.0
+info:
+  title: Fibre gateway
+  version: 1.0.0
+  description: >-
+    HTTPS gateway that stores one blob per put on Celestia Fibre and reads it
+    back by blob_id. Covers the client endpoints only.
+servers:
+  - url: https://cf.celestia-corto.com:8443
+security:
+  - bearer: []
+tags:
+  - name: blobs
+    description: Store and read blobs.
+  - name: capacity
+    description: Reserve and read gateway capacity.
+paths:
+  /v1/put:
+    post:
+      operationId: putBlob
+      tags: [blobs]
+      summary: Store one blob
+      description: >-
+        Stores one blob in one Celestia transaction and returns its receipt.
+        The response comes after the chain confirms the blob, so a put takes
+        seconds. There is no deduplication. Verify the commitment against your
+        own data before storing only the blob_id: see
+        https://github.com/celestiaorg/fibre-gateway-client/blob/main/docs/client-guide.md#verification.
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+              minLength: 33554427
+              maxLength: 134217723
+              description: >-
+                The blob bytes. Content-Length is required and must fall in this
+                range (32 MiB - 5 through 128 MiB - 5). Chunked uploads are
+                rejected. Exactly one application/octet-stream Content-Type
+                header is allowed. No query string is allowed.
+      responses:
+        '200':
+          description: Stored. The receipt with its commitment proof.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PutResponse' }
+        '400':
+          description: >-
+            invalid_request when the Content-Type is missing, wrong or repeated,
+            or a query string is present. invalid_body when the body is shorter
+            than Content-Length or does not arrive before the deadline.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: unauthorized. Token missing, wrong, retired, or more than one Authorization header.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '413':
+          description: invalid_length. Content-Length missing or outside the size range.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: capacity. All upload slots on this instance are busy. Not queued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '502':
+          description: >-
+            upload_failed when the upload or chain confirmation failed.
+            receipt_unavailable when confirmed but the transaction could not be
+            looked up. proof_unavailable when confirmed but no commitment proof
+            was produced. The outcome is unknown except for proof_unavailable.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: unavailable. The instance is shutting down.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '504':
+          description: timeout. Not confirmed within the deadline. Outcome unknown.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /v1/get:
+    post:
+      operationId: getBlob
+      tags: [blobs]
+      summary: Read a whole blob
+      description: >-
+        Returns the whole blob named by blob_id, for 24 hours after the put.
+        The request body is a JSON object; only blob_id is required. The whole
+        put response is also accepted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GetRequest' }
+      responses:
+        '200':
+          description: The blob bytes, exactly what was put.
+          headers:
+            Content-Type:
+              schema: { type: string, const: application/octet-stream }
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '400':
+          description: >-
+            invalid_request. Body over 4 KiB, malformed JSON, a missing,
+            unknown, duplicate or null field, data after the object, a bad
+            commitment_proof, wrong chain, bad tx_hash or promise_height, or an
+            unsupported blob version.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: unauthorized. Token missing, wrong, retired, or more than one Authorization header.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: not_found. Blob not found. Older than 24 h, or the blob_id is wrong.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: capacity. All read slots on this instance are busy. Not queued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '502':
+          description: download_failed. The blob could not be downloaded.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: unavailable. The instance is shutting down.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '504':
+          description: timeout. Not downloaded within the deadline.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /v1/capacity:
+    post:
+      operationId: reserveCapacity
+      tags: [capacity]
+      summary: Reserve gateway instances
+      description: >-
+        Reserves gateway instances before a large job. The token must be allowed
+        to reserve capacity. Returns the current capacity status.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CapacityRequest' }
+      responses:
+        '200':
+          description: The capacity status.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CapacityStatus' }
+        '400':
+          description: invalid_request. Malformed JSON, an unknown field, or instances or minutes out of range.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: unauthorized. Token missing, wrong, retired, or more than one Authorization header.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: forbidden. This token may not reserve capacity.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: rate_limited. The reservation changed too recently. Retry later.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: unavailable when the instance is shutting down. capacity_unavailable when the capacity service did not answer.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    get:
+      operationId: readCapacity
+      tags: [capacity]
+      summary: Read capacity status
+      description: >-
+        Returns the current capacity status without changing the reservation.
+        The token must be allowed to reserve capacity.
+      responses:
+        '200':
+          description: The capacity status.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CapacityStatus' }
+        '400':
+          description: invalid_request. The capacity service rejected the request.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: unauthorized. Token missing, wrong, retired, or more than one Authorization header.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: forbidden. This token may not reserve capacity.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: rate_limited. The reservation changed too recently. Retry later.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: unavailable when the instance is shutting down. capacity_unavailable when the capacity service did not answer.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: An Authorization Bearer token, exactly one header. Required on every endpoint.
+  schemas:
+    PutResponse:
+      type: object
+      additionalProperties: false
+      required: [chain_id, tx_hash, blob_id, promise_height, commitment_proof]
+      properties:
+        chain_id:
+          type: string
+          description: The chain the blob was stored on.
+        tx_hash:
+          type: string
+          pattern: '^[0-9a-fA-F]{64}$'
+          description: The MsgPayForFibre transaction that paid for the blob.
+        blob_id:
+          type: string
+          pattern: '^[0-9a-f]{66}$'
+          description: Version byte 00 then the 32-byte commitment.
+        promise_height:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9223372036854775807
+          description: Height of the payment promise.
+        commitment_proof:
+          $ref: '#/components/schemas/CommitmentProof'
+    CommitmentProof:
+      type: object
+      additionalProperties: false
+      required: [row_root_siblings]
+      properties:
+        row_root_siblings:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: string
+            pattern: '^[0-9a-f]{64}$'
+          description: The two row tree siblings that let a client recompute the commitment.
+    GetRequest:
+      type: object
+      additionalProperties: false
+      required: [blob_id]
+      properties:
+        blob_id:
+          type: string
+          pattern: '^[0-9a-fA-F]{66}$'
+          description: Version byte 00 then the 32-byte commitment. The only required field.
+        chain_id:
+          type: string
+          description: Optional. If present, must be the gateway's chain.
+        tx_hash:
+          type: string
+          pattern: '^[0-9a-fA-F]{64}$'
+          description: Optional. If present, must be 64 hex characters. Not checked against the chain.
+        promise_height:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9223372036854775807
+          description: Optional. Selects the validator set to read from.
+        commitment_proof:
+          $ref: '#/components/schemas/CommitmentProof'
+    CapacityRequest:
+      type: object
+      additionalProperties: false
+      required: [instances, minutes]
+      properties:
+        instances:
+          type: integer
+          minimum: 3
+          maximum: 20
+          description: Number of instances to reserve.
+        minutes:
+          type: integer
+          minimum: 1
+          maximum: 120
+          description: How long to hold the reservation.
+    CapacityStatus:
+      type: object
+      additionalProperties: false
+      required: [floor, expires_at, target, active, running, eta_seconds]
+      properties:
+        floor:
+          type: [integer, 'null']
+          description: Reserved instance floor.
+        expires_at:
+          type: [string, 'null']
+          description: When the reservation expires, RFC 3339, or null when floor is 0.
+        target:
+          type: [integer, 'null']
+          description: Instances the service is scaling toward.
+        active:
+          type: [integer, 'null']
+          description: Instances serving traffic.
+        running:
+          type: [integer, 'null']
+          description: Instances running.
+        eta_seconds:
+          type: [integer, 'null']
+          description: Estimated seconds until the target is met.
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: A stable error code.
+          enum:
+            - invalid_request
+            - invalid_body
+            - invalid_length
+            - unauthorized
+            - forbidden
+            - not_found
+            - capacity
+            - rate_limited
+            - upload_failed
+            - receipt_unavailable
+            - proof_unavailable
+            - download_failed
+            - unavailable
+            - capacity_unavailable
+            - timeout
