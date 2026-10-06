@@ -11,7 +11,7 @@ Taken from [clients/rust/examples/quickstart.rs](../clients/rust/examples/quicks
 
 ```toml
 [dependencies]
-fibre-gateway-client = { git = "https://github.com/celestiaorg/fibre-gateway-client", features = ["http"] }
+fibre-gateway-client = { version = "0.1", features = ["http"] }
 serde_json = "1"
 ```
 
