@@ -36,6 +36,8 @@ After that, the `blob_id` is all you need to read the blob.
 | Code | Read access to [celestiaorg/fibre-gateway-client](https://github.com/celestiaorg/fibre-gateway-client), for the Rust and Python libraries |
 | A test blob | 33,554,427 to 134,217,723 bytes (32 MiB − 5 to 128 MiB − 5) |
 
+The −5 reserves space for Fibre's 5-byte blob header (1 version byte and 4 bytes for the data length). The gateway adds this header for you; send only your data.
+
 The set of instances behind `cf.celestia-corto.com` changes. Always use the name, never pin IPs.
 
 Send the token as `Authorization: Bearer <token>` on every request.
@@ -140,7 +142,7 @@ Support: `<support contact>`.
 
 | Term | Meaning |
 |---|---|
-| Blob | The bytes you put, 32 MiB − 5 to 128 MiB − 5 |
+| Blob | The bytes you put, 32 MiB − 5 to 128 MiB − 5. The −5 reserves space for Fibre's 5-byte blob header (1 version byte and 4 bytes for the data length), which the gateway adds for you |
 | Rows | The blob is laid out as 4096 equal rows: a 5-byte header, your data, then zero padding. The network adds 12,288 parity rows |
 | Row root | Merkle root over all 16,384 rows |
 | RLC | Random linear combination: one 16-byte value per row, with coefficients derived from the row root. It ties every row's content to the commitment |
@@ -184,6 +186,7 @@ Celestia issues one or more bearer tokens per client, out of band
 ## Blob sizes
 
 A put accepts 33,554,427 through 134,217,723 bytes (32 MiB − 5 through 128 MiB − 5).
+The −5 reserves space for Fibre's 5-byte blob header (1 version byte and 4 bytes for the data length). The gateway adds this header for you; send only your data.
 Other sizes get `413` before the body is read.
 
 Best sizes are `k × 262,144 − 5` bytes, for `k` from 128 to 512 (for example 134,217,723).

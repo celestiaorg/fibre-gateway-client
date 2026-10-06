@@ -32,6 +32,7 @@ Stores one blob. The response comes after the chain confirms the blob, so a put 
 | Query string | None allowed |
 | Body | The blob bytes |
 
+The −5 reserves space for Fibre's 5-byte blob header (1 version byte and 4 bytes for the data length). The gateway adds this header for you; send only your data and exclude the header from `Content-Length`.
 The size is checked before the body is read.
 
 ### Put response
