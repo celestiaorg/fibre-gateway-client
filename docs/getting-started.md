@@ -16,6 +16,8 @@ The [client guide](client-guide.md) is the full reference.
 | Code | Read access to [celestiaorg/fibre-gateway-client](https://github.com/celestiaorg/fibre-gateway-client), for the Rust and Python libraries |
 | A test blob | 33,554,427 to 134,217,723 bytes (32 MiB − 5 to 128 MiB − 5) |
 
+The −5 reserves space for Fibre's 5-byte blob header (1 version byte and 4 bytes for the data length). The gateway adds this header for you; send only your data.
+
 The set of instances behind `cf.celestia-corto.com` changes. Always use the name, never pin IPs.
 
 Send the token as `Authorization: Bearer <token>` on every request.
