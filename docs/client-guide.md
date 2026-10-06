@@ -74,7 +74,7 @@ Other sizes get `413` before the body is read.
 Best sizes are `k × 262,144 − 5` bytes, for `k` from 128 to 512 (for example 134,217,723).
 They fill the 4096 rows exactly, so no padding is wasted.
 
-The gateway returns exactly the bytes you put. It never strips padding.
+The gateway strips Fibre encoding padding, but preserves any padding you add.
 If your data is smaller than the minimum, pad it yourself and store the real length.
 
 ## Limits

@@ -47,7 +47,7 @@ Put latency includes chain confirmation. A slow block delays every put in flight
 
 ## Clients must not
 
-- Send blobs outside the size range, or expect padding to be stripped.
+- Send blobs outside the size range, or expect client-added padding to be stripped.
 - Run more than 32 concurrent puts or 32 concurrent gets per instance without agreement.
 - Let the HTTP library replay a put body by itself.
 - Retry `400`, `401`, `404` or `413` without changing the request.
