@@ -2,7 +2,7 @@
 
 Client libraries and docs for the Fibre gateway, an HTTPS API that stores blobs on Celestia Fibre and reads them back.
 
-Start with the **[quick start](docs/client-guide.md#quick-start)** in the client guide. Then:
+Start with **[docs/getting-started.md](docs/getting-started.md)**. Then:
 
 - [docs/client-guide.md](docs/client-guide.md): full reference (tokens, limits, retries, verification, client libraries).
 - [docs/put-api.md](docs/put-api.md): API reference for `POST /v1/put`, `POST /v1/get` and `/v1/capacity`.

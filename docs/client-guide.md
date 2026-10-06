@@ -1,12 +1,12 @@
 # Client guide
 
 How to integrate the Fibre gateway: connecting, tokens, limits, errors, verification and client libraries.
+New here? Start with [Getting started](getting-started.md).
 The request and response formats are in the [API reference](put-api.md).
 What we promise is in the [service contract](contract.md).
 
 ## Contents
 
-- [Quick start](#quick-start)
 - [Terms](#terms)
 - [Connect](#connect)
 - [Tokens](#tokens)
@@ -19,124 +19,6 @@ What we promise is in the [service contract](contract.md).
 - [Verification](#verification)
 - [Client libraries](#client-libraries)
 - [How verification works](#how-verification-works)
-
-## Quick start
-
-From zero to a verified put and get. The sections after this one are the full reference.
-
-A put returns a `blob_id` and a commitment proof. The Rust and Python libraries check that proof for you.
-After that, the `blob_id` is all you need to read the blob.
-
-### What you need
-
-| Item | Value |
-|---|---|
-| Endpoint | `https://cf.celestia-corto.com:8443`. Standard TLS, publicly trusted certificate, no custom CA |
-| Token | A bearer token from Celestia, sent out of band |
-| Code | Read access to [celestiaorg/fibre-gateway-client](https://github.com/celestiaorg/fibre-gateway-client), for the Rust and Python libraries |
-| A test blob | 33,554,427 to 134,217,723 bytes (32 MiB − 5 to 128 MiB − 5) |
-
-The −5 reserves space for Fibre's 5-byte blob header (1 version byte and 4 bytes for the data length). The gateway adds this header for you; send only your data.
-
-The set of instances behind `cf.celestia-corto.com` changes. Always use the name, never pin IPs.
-
-Send the token as `Authorization: Bearer <token>` on every request.
-More in [Tokens](#tokens).
-
-### Try it with curl
-
-```sh
-GW=https://cf.celestia-corto.com:8443
-TOKEN=<your token>
-
-head -c 134217723 /dev/urandom > blob.bin   # 128 MiB − 5, the largest size
-
-curl --fail-with-body --max-time 160 \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/octet-stream" \
-  --data-binary @blob.bin "$GW/v1/put" -o put.json
-
-curl --fail-with-body --max-time 130 \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  --data "{\"blob_id\":\"$(jq -r .blob_id put.json)\"}" "$GW/v1/get" -o blob.out
-
-cmp blob.bin blob.out && echo ok
-```
-
-The put takes a few seconds: it returns after the chain confirms the blob.
-`put.json` looks like this:
-
-```json
-{"chain_id":"corto-10","tx_hash":"<64 hex>","blob_id":"<66 hex>","promise_height":123,
- "commitment_proof":{"row_root_siblings":["<64 hex>","<64 hex>"]}}
-```
-
-The get body needs only `blob_id`. Fields are described in the [API reference](put-api.md#put-response).
-curl does not check the commitment proof. Use the Rust or Python library for that (next step).
-
-### Put, verify and get in Rust
-
-The crate `fibre-gateway-client` is in [clients/rust](../clients/rust). It is not on crates.io.
-
-```toml
-[dependencies]
-fibre-gateway-client = { git = "https://github.com/celestiaorg/fibre-gateway-client", features = ["http"] }
-serde_json = "1"
-```
-
-This is [clients/rust/examples/quickstart.rs](../clients/rust/examples/quickstart.rs):
-
-```rust
-use fibre_gateway_client::Client;
-
-const GATEWAY: &str = "https://cf.celestia-corto.com:8443";
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let path = std::env::args().nth(1).ok_or("usage: quickstart <blob>")?;
-    let data = std::fs::read(path)?;
-    let client = Client::new(GATEWAY, std::env::var("TOKEN")?);
-
-    // `put` checks the commitment proof against `data` before it returns the receipt.
-    let receipt = client.put(&data)?;
-    // After the check, `blob_id` is all you need to keep.
-    std::fs::write("blob_id.txt", &receipt.blob_id)?;
-
-    let back = client.get(&receipt.blob_id)?;
-    if back != data {
-        return Err("read-back does not match".into());
-    }
-    println!("ok {} {}", receipt.blob_id, receipt.tx_hash);
-    Ok(())
-}
-```
-
-Run it from `clients/rust`:
-
-```sh
-TOKEN=<your token> cargo run --release --features http --example quickstart -- blob.bin
-```
-
-You do not need to verify anything yourself: `Client::put` checks the commitment against your data
-before it returns, and fails with `HttpError::Verify` if it does not match.
-In Python, call `verify` from `fibre_verify.py` once after the put ([Python](#python)).
-
-The `Client` already uses the right timeouts (160 s put, 130 s get, 10 s connect) and never replays a put.
-Error types are in [Client libraries: Rust](#rust).
-
-### Before production
-
-- [Errors and retries](#errors-and-retries): which errors to retry, and why a retried put may store a second copy.
-- [Limits](#limits): sizes, concurrency per instance, retention.
-- [Connect](#connect): keep-alive and spreading load over instances.
-- [Blob sizes](#blob-sizes): sizes that waste no padding.
-- [Retention and what to store](#retention-and-what-to-store): keep the `blob_id`, the put time and, if you padded, the real length. Blobs can be read for 24 h.
-- [Capacity](#capacity): reserve instances before a large job.
-- [On-chain check](#on-chain-check-optional) (optional): confirm the chain accepted the payment.
-
-The [service contract](contract.md) lists what we promise and measured performance. There is no SLA yet.
-
-Support: `<support contact>`.
 
 ## Terms
 
