@@ -2,22 +2,27 @@
 
 Client libraries and docs for the Fibre gateway, an HTTPS API that stores blobs on Celestia Fibre and reads them back.
 
-## What put and get do
+## Why post to Celestia
 
-[Celestia](https://celestia.org) is a data availability network: it guarantees that published data can be downloaded by anyone who asks.
-Fibre is its high-throughput path for large blobs. The gateway runs the Fibre protocol for you,
-so you only make HTTPS calls. You need no Celestia account, keys or TIA; the gateway pays for every put.
+[Celestia](https://celestia.org) is a data availability network. Posting a blob to it gives you more than storage:
 
-- **Put** sends one blob, 32–128 MiB. The gateway splits it into pieces, adds redundancy
-  (erasure coding) and spreads the pieces over Celestia's validators. Each validator checks its pieces and signs.
-  The gateway then records the payment and the blob's commitment on the Celestia chain.
-- **A successful put (`200`) means your data is available.** Validators holding at least 2/3 of the stake
-  have signed that they store their pieces, and the chain has accepted the payment.
-  The blob can be read back for 24 h, even if some validators go offline.
-- **The `blob_id`** in the response is a fingerprint of your data (a cryptographic commitment).
-  Our libraries recompute it from your own bytes, so you do not have to trust the gateway that it stored your data and not something else.
-- **Get** takes a `blob_id`. The gateway fetches enough pieces from the validators, checks each one against the `blob_id`,
-  rebuilds the blob and returns exactly the bytes you put.
+- **Proof that your data was published.** A successful put records the blob's fingerprint on the Celestia chain.
+  Anyone can check that this exact data was published, and when, without trusting you or us.
+- **Availability backed by the network, not one server.** Your data is spread over Celestia's validators.
+  A successful put means validators holding at least 2/3 of the stake have confirmed they store it.
+  It stays retrievable even if some of them go offline.
+- **References that can't be tampered with.** The `blob_id` is a fingerprint of your bytes.
+  Anyone who reads the blob by its `blob_id` gets exactly what you put, or an error.
+
+This is what rollups and other systems need when they must show that their data was made public and can be checked by others.
+
+## Put and get
+
+- **Put** sends one blob (32–128 MiB) and returns once it is available, with its `blob_id`.
+  Our libraries check that the `blob_id` matches your bytes.
+- **Get** returns the blob by its `blob_id` for 24 h after the put.
+
+You need no Celestia account, keys or TIA: the gateway pays for every put.
 
 ## Docs
 
