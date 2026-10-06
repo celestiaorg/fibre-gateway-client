@@ -11,7 +11,7 @@ Formats are in the [API reference](put-api.md); how-to is in the [client guide](
 | Endpoint | `https://cf.celestia-corto.com:8443`, round-robin over the instances serving traffic. Chain `corto-10` |
 | Transport | HTTPS, TLS 1.2 or newer, publicly trusted certificate |
 | Auth | Bearer tokens issued by Celestia, valid on every instance. Rotation without downtime |
-| Blob size | 33,554,427 through 134,217,723 bytes, inclusive |
+| Blob size | 33,554,427 through 134,217,723 bytes, inclusive, excluding the 5-byte blob header added by the gateway ([blob sizes](client-guide.md#blob-sizes)) |
 | Put | Returns only after the chain confirms the blob, with a receipt and a commitment proof |
 | Get | Returns exactly the bytes that were put, with an exact `Content-Length` |
 | Retention | Readable for 24 h after the put. After that `/v1/get` returns `404` |

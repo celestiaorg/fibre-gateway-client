@@ -37,7 +37,11 @@ paths:
               maxLength: 134217723
               description: >-
                 The blob bytes. Content-Length is required and must fall in this
-                range (32 MiB - 5 through 128 MiB - 5). Chunked uploads are
+                range (32 MiB - 5 through 128 MiB - 5). The -5 reserves space
+                for Fibre's 5-byte blob header (1 version byte and 4 bytes for
+                the data length). The gateway adds this header for you; send
+                only your data and exclude the header from Content-Length.
+                Chunked uploads are
                 rejected. Exactly one application/octet-stream Content-Type
                 header is allowed. No query string is allowed.
       responses:
