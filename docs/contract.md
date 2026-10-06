@@ -13,6 +13,7 @@ Formats are in the [API reference](put-api.md); how-to is in the [client guide](
 | Auth | Bearer tokens issued by Celestia, valid on every instance. Rotation without downtime |
 | Blob size | 33,554,427 through 134,217,723 bytes, inclusive, excluding the 5-byte blob header added by the gateway ([blob sizes](client-guide.md#blob-sizes)) |
 | Put | Returns only after the chain confirms the blob, with a receipt and a commitment proof |
+| Availability | A `200` put means the blob is available: validators holding at least 2/3 of the stake signed that they store their pieces, and the chain accepted the payment. It stays readable for the retention period, even if some validators go offline |
 | Get | Returns exactly the bytes that were put, with an exact `Content-Length` |
 | Retention | Readable for 24 h after the put. After that `/v1/get` returns `404` |
 | Put deadline | 150 s |
