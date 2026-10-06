@@ -255,8 +255,8 @@ The example runs the whole flow: put, commitment check, on-chain check, get and 
 | Rust | [clients/rust](../clients/rust), crate `fibre-gateway-client` | `verify` | `Client` (feature `http`) |
 | Python | [clients/python/fibre_verify.py](../clients/python/fibre_verify.py) | `verify` | Use `requests` or similar |
 
-Verifying a 128 MiB − 5 blob on one laptop core (Apple M5 Pro) takes about 0.6 s in Rust
-and 3.7 s in pure Python. Use Rust in production.
+Verifying a 128 MiB − 5 blob on one laptop core (Apple M5 Pro) takes about 0.2 s in Rust
+(23 ms on all 18 cores) and 3.7 s in pure Python. Use Rust in production.
 
 ### Rust
 
@@ -285,7 +285,7 @@ GW=https://cf.celestia-corto.com:8443 TOKEN=<token> RPC=https://v0.cf.celestia-c
   cargo run --release --features http --example put_verify_get -- blob.bin
 ```
 
-The crate needs `std`: `rsema1d` 1.2 pulls in rayon, memmap2, serde_json and reed-solomon-simd.
+The crate needs `std`: `rsema1d` 1.3 pulls in rayon, memmap2, serde_json and reed-solomon-simd.
 The `http` feature uses rustls with built-in Mozilla root certificates, so no system CA store is needed.
 No `no_std` build is planned.
 
@@ -378,9 +378,10 @@ Hashes: leaf = `SHA256(0x00 ‖ data)`, node = `SHA256(0x01 ‖ left ‖ right)`
    Accept only if `SHA256(row_root ‖ rlc_root)` equals `blob_id` without its first byte.
 
 The same steps written with lumina's
-[`rsema1d`](https://github.com/celestiaorg/lumina/tree/main/rsema1d) 1.2 (add `rsema1d = "1.2"`
+[`rsema1d`](https://github.com/celestiaorg/lumina/tree/main/rsema1d) 1.3 (add `rsema1d = "1.3"`
 to your dependencies). This code runs as the `manual_steps_match_vectors` test in
 [clients/rust/tests/vectors.rs](../clients/rust/tests/vectors.rs).
+`rsema1d::commitment_from_original_rows` does the same in one call, faster, and is what `verify` uses.
 
 ```rust
 use fibre_gateway_client::{parse_blob_id, row_size, ORIGINAL_ROWS, PARITY_ROWS};
