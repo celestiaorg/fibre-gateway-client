@@ -1,7 +1,6 @@
 # Client guide
 
-How to integrate the Fibre gateway: connecting, tokens, limits, errors, verification and client libraries.
-The request and response formats are in the [API reference](put-api.md).
+This document describes how to integrate the Fibre gateway. The request and response formats are in the [API reference](put-api.md).
 What we promise is in the [service contract](contract.md).
 
 ## Contents
@@ -18,32 +17,36 @@ What we promise is in the [service contract](contract.md).
 - [Retention and what to store](#retention-and-what-to-store)
 - [Verification](#verification)
 - [Client libraries](#client-libraries)
-- [How verification works](#how-verification-works)
 
 ## Quick start
 
-From zero to a verified put and get. The sections after this one are the full reference.
 
-A put returns a `blob_id` and a commitment proof. The Rust and Python libraries check that proof for you.
-After that, the `blob_id` is all you need to read the blob.
+This gateway provides easy access to a Celestia Fibre deployment. The gateway accepts a raw payload, Reed-Solomon encodes it, and sends the resulting `blob` to Celestia for storage.
+On success, the gatway returns a `blob_id` - a binding commitment to the posted data. Before accepting, clients should verify that the returned commitment matches their payload
+using the provided library (see Rust example below).
 
-### What you need
 
 | Item | Value |
 |---|---|
-| Endpoint | `https://cf.celestia-corto.com:8443`. Standard TLS, publicly trusted certificate, no custom CA |
+| Endpoint | `https://cf.celestia-corto.com:8443` |
 | Token | A bearer token from Celestia, sent out of band |
 | Code | Read access to [celestiaorg/fibre-gateway-client](https://github.com/celestiaorg/fibre-gateway-client), for the Rust and Python libraries |
 | A test blob | 33,554,427 to 134,217,723 bytes (32 MiB − 5 to 128 MiB − 5) |
 
-The −5 reserves space for Fibre's 5-byte blob header (1 version byte and 4 bytes for the data length). The gateway adds this header for you; send only your data.
+Note: The −5 reserves space for Fibre's 5-byte blob header. The gateway adds this header for you; send only your data.
+Send the token using an authroization header (`Authorization: Bearer <token>`) on every request.
 
-The set of instances behind `cf.celestia-corto.com` changes. Always use the name, never pin IPs.
+**Scaling**
 
-Send the token as `Authorization: Bearer <token>` on every request.
-More in [Tokens](#tokens).
+To minimize costs, the gateway scales down after inactivity. Before running a load test, we recommend scaling it up manually to ensure that capacity is available. 
 
-### Try it with curl
+| Endpoint | Meaning |
+|---|---|
+| `POST /v1/capacity` with `{"instances":20,"minutes":60}` | Keep at least `instances` (3–20) up for `minutes` (1–120) |
+| `GET /v1/capacity` | Current reservation and fleet size |
+
+
+### Curl (Put and Get without Verification)
 
 ```sh
 GW=https://cf.celestia-corto.com:8443
@@ -72,12 +75,11 @@ The put takes a few seconds: it returns after the chain confirms the blob.
  "commitment_proof":{"row_root_siblings":["<64 hex>","<64 hex>"]}}
 ```
 
-The get body needs only `blob_id`. Fields are described in the [API reference](put-api.md#put-response).
-curl does not check the commitment proof. Use the Rust or Python library for that (next step).
+Fields are described in the [API reference](put-api.md#put-response)
 
-### Put, verify and get in Rust
+### Put, Verification and Get in Rust
 
-The crate `fibre-gateway-client` is in [clients/rust](../clients/rust). It is not on crates.io.
+The crate `fibre-gateway-client` can be found in [clients/rust](../clients/rust). It is not yet published to crates.io.
 
 ```toml
 [dependencies]
@@ -121,8 +123,7 @@ You do not need to verify anything yourself: `Client::put` checks the commitment
 before it returns, and fails with `HttpError::Verify` if it does not match.
 In Python, call `verify` from `fibre_verify.py` once after the put ([Python](#python)).
 
-The `Client` already uses the right timeouts (160 s put, 130 s get, 10 s connect) and never replays a put.
-Error types are in [Client libraries: Rust](#rust).
+The `Client` already uses the correct timeouts (160 s put, 130 s get, 10 s connect) and never replays a put.
 
 ### Before production
 
@@ -142,7 +143,7 @@ Support: `<support contact>`.
 
 | Term | Meaning |
 |---|---|
-| Blob | The bytes you put, 32 MiB − 5 to 128 MiB − 5. The −5 reserves space for Fibre's 5-byte blob header (1 version byte and 4 bytes for the data length), which the gateway adds for you |
+| Blob | The bytes you put, 32 MiB − 5 to 128 MiB − 5 |
 | Rows | The blob is laid out as 4096 equal rows: a 5-byte header, your data, then zero padding. The network adds 12,288 parity rows |
 | Row root | Merkle root over all 16,384 rows |
 | RLC | Random linear combination: one 16-byte value per row, with coefficients derived from the row root. It ties every row's content to the commitment |
@@ -157,7 +158,7 @@ Support: `<support contact>`.
 |---|---|
 | Endpoint | `https://cf.celestia-corto.com:8443`. Port 8443 only |
 | DNS | The name round-robins over the instances serving traffic |
-| TLS | TLS 1.2 or newer. Public Let's Encrypt certificate for `cf.celestia-corto.com` and `*.cf.celestia-corto.com`. Standard verification, no custom CA |
+| TLS | TLS 1.2 or newer. Public Let's Encrypt certificate for `cf.celestia-corto.com` and `*.cf.celestia-corto.com`|
 | Chain | `corto-10` |
 
 The same certificate and tokens work on every name.
@@ -173,36 +174,27 @@ HTTP client settings:
 
 ## Tokens
 
-Celestia issues one or more bearer tokens per client, out of band
-(a password manager or another secure channel, never a ticket or chat).
+Celestia will issue you tokens out-of-band. Reach out via Slack or email if additional tokens are needed.
 
-- Send exactly one header, `Authorization: Bearer <token>`: the word `Bearer`, one space, the token.
-- Every instance accepts the same tokens.
-- **Rotation, no downtime:** we add your new token, you switch to it, then we remove the old one.
+- Use bearer authorization headers: `Authorization: Bearer <token>`
 - **`401 unauthorized`** means the token is missing, wrong or retired, or the header was sent twice.
-  Do not retry unchanged. If it starts after a rotation, switch to the new token.
-- **Storage.** Never log the token or put it in a URL. Inject it at launch. Do not bake it into the image.
 
 ## Blob sizes
 
 A put accepts 33,554,427 through 134,217,723 bytes (32 MiB − 5 through 128 MiB − 5).
-The −5 reserves space for Fibre's 5-byte blob header (1 version byte and 4 bytes for the data length). The gateway adds this header for you; send only your data.
-Other sizes get `413` before the body is read.
+The −5 reserves space for Fibre's 5-byte blob header (1 version byte and 4 bytes for the data length)
+Other sizes will be rejected with `413`.
 
-Best sizes are `k × 262,144 − 5` bytes, for `k` from 128 to 512 (for example 134,217,723).
-They fill the 4096 rows exactly, so no padding is wasted.
-
-The gateway returns exactly the bytes you put. It never strips padding.
-If your data is smaller than the minimum, pad it yourself and store the real length.
+The gateway returns exactly the bytes you put. It never strips padding. If your data is smaller than the minimum, pad it yourself and store the real length.
+If your data is larger than the maximum, split it into chunks and embed metadata to allow reconstruction of the original blob.
 
 ## Limits
 
 | Limit | Value |
 |---|---|
 | Blob size | 33,554,427 to 134,217,723 bytes |
-| Concurrent puts per instance | 48, then `429`. We recommend at most 32 |
-| Concurrent gets per instance | 32, then `429` |
-| Get request body | 4 KiB |
+| Concurrent puts per instance | 48. We recommend no more than 32 |
+| Concurrent gets per instance | 32 |
 | Request headers | 16 KiB, sent within 5 s |
 | Retention | 24 h after the put |
 | Idempotency | None. A retried put may store a second copy |
@@ -403,15 +395,10 @@ GW=https://cf.celestia-corto.com:8443 TOKEN=<token> RPC=https://v0.cf.celestia-c
   cargo run --release --features http --example put_verify_get -- blob.bin
 ```
 
-The crate needs `std`: `rsema1d` 1.3 pulls in rayon, memmap2, serde_json and reed-solomon-simd.
-The `http` feature uses rustls with built-in Mozilla root certificates, so no system CA store is needed.
-No `no_std` build is planned.
-
 ### Python
 
-[clients/python/fibre_verify.py](../clients/python/fibre_verify.py) is one stdlib-only file.
+[clients/python/fibre_verify.py](../clients/python/fibre_verify.py)
 `verify(data, blob_id, row_root_siblings)` raises `VerifyError` on a mismatch.
-Run its tests with `python3 -m unittest` in `clients/python`.
 
 A put and get with `requests` (`pip install requests`):
 
@@ -455,85 +442,3 @@ assert get(blob_id) == data
 
 A network error after the put body started sending is an unknown outcome.
 Retry it with a new request (see [Errors and retries](#errors-and-retries)).
-
-## How verification works
-
-You only need this to write your own verifier. The libraries above do all of it.
-
-The gateway encodes your blob, so a faulty or dishonest gateway could commit to other bytes.
-The commitment check recomputes the commitment from your own data and compares it with `blob_id`.
-The Rust and Python verifiers are tested against the same vectors,
-[clients/testdata/commitment_vectors.json](../clients/testdata/commitment_vectors.json).
-
-### Why you must compute the RLC yourself
-
-Never take RLC values, or an RLC root, from the gateway or anyone else.
-Only an RLC you compute from your own rows ties the commitment to all of your data.
-
-### Step by step
-
-You only need this to write your own verifier. `verify` does exactly this.
-Hashes: leaf = `SHA256(0x00 ‖ data)`, node = `SHA256(0x01 ‖ left ‖ right)`.
-
-**Inclusion: rows to row root.**
-
-1. **Row size.** `row_size = roundUp64(ceil((len + 5) / 4096))`, at least 64 bytes.
-   For 128 MiB − 5 it is 32,768.
-2. **Layout.** A 5-byte header (`0x00`, then `len` as big-endian `u32`), your data, then zeros,
-   filling exactly 4096 rows in order.
-3. **Root of your rows.** The Merkle root over the 4096 row leaves.
-4. **Fold the siblings.** `row_root = node(node(root, s0), s1)`, with `s0` and `s1` the two
-   `row_root_siblings`, lowest first. Your rows are the left-most quarter of the 16,384-row tree,
-   so no Reed-Solomon encoding is needed.
-
-**RLC: rows to commitment.**
-
-1. **Coefficients.** `seed = SHA256(row_root ‖ le32(4096) ‖ le32(12288) ‖ le32(row_size))`, then
-   `c_i = HashToGF128(SHA256(seed ‖ le32(i)))` for `i < row_size / 2`.
-2. **RLC per row.** `rlc_j = Σ_i sym_i(row_j) · c_i` in GF(2^128), where `sym_i` are the row's
-   16-bit Leopard symbols. The RLC is linear, so the 4096 original rows are enough.
-3. **Compare.** Merkle root over the 16-byte `rlc_j` values gives `rlc_root`.
-   Accept only if `SHA256(row_root ‖ rlc_root)` equals `blob_id` without its first byte.
-
-The same steps written with lumina's
-[`rsema1d`](https://github.com/celestiaorg/lumina/tree/main/rsema1d) 1.3 (add `rsema1d = "1.3"`
-to your dependencies). This code runs as the `manual_steps_match_vectors` test in
-[clients/rust/tests/vectors.rs](../clients/rust/tests/vectors.rs).
-`rsema1d::commitment_from_original_rows` does the same in one call, faster, and is what `verify` uses.
-
-```rust
-use fibre_gateway_client::{parse_blob_id, row_size, ORIGINAL_ROWS, PARITY_ROWS};
-use rsema1d::codec::compute_rlc;
-use rsema1d::crypto::{derive_coefficients, hash_internal, hash_leaf, sha256, MerkleTree};
-
-fn manual_check(data: &[u8], blob_id: &str, siblings: [[u8; 32]; 2]) -> bool {
-    // blob_id = version byte 0x00 ‖ 32-byte commitment.
-    let id = parse_blob_id(blob_id).unwrap();
-    assert_eq!(id[0], 0);
-
-    // Lay out header ‖ data ‖ zero padding over K = 4096 rows of row_size bytes.
-    let size = row_size(data.len());
-    let mut flat = vec![0u8; ORIGINAL_ROWS * size];
-    flat[1..5].copy_from_slice(&(data.len() as u32).to_be_bytes());
-    flat[5..5 + data.len()].copy_from_slice(data);
-    let rows: Vec<&[u8]> = flat.chunks(size).collect();
-
-    // Row root: Merkle root of the K rows, then fold in the two siblings.
-    let leaves = rows.iter().map(|row| hash_leaf(row)).collect();
-    let mut row_root = MerkleTree::from_leaf_hashes(leaves).root();
-    for sibling in &siblings {
-        row_root = hash_internal(&row_root, sibling);
-    }
-
-    // RLC root: RLC of every original row, with coefficients derived from the row root.
-    let coeffs = derive_coefficients(&row_root, ORIGINAL_ROWS, PARITY_ROWS, size);
-    let rlc_leaves = rows
-        .iter()
-        .map(|row| hash_leaf(&compute_rlc(row, &coeffs).to_bytes()))
-        .collect();
-    let rlc_root = MerkleTree::from_leaf_hashes(rlc_leaves).root();
-
-    // commitment = SHA256(row_root ‖ rlc_root).
-    sha256(&[row_root, rlc_root].concat()) == id[1..]
-}
-```
