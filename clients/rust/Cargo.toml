@@ -5,7 +5,10 @@ edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
 description = "Receipt types, commitment verification and an optional HTTP client for the Fibre gateway"
-publish = false
+readme = "README.md"
+keywords = ["celestia", "fibre", "data-availability"]
+categories = ["api-bindings", "cryptography"]
+include = ["src/**", "examples/**", "Cargo.toml", "README.md", "LICENSE"]
 
 [dependencies]
 rsema1d = "1.3.0"

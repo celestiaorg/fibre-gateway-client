@@ -79,11 +79,11 @@ Fields are described in the [API reference](put-api.md#put-response)
 
 ### Put, Verification and Get in Rust
 
-The crate `fibre-gateway-client` can be found in [clients/rust](../clients/rust). It is not yet published to crates.io.
+The crate [`fibre-gateway-client`](https://crates.io/crates/fibre-gateway-client) is on crates.io. Its source is in [clients/rust](../clients/rust).
 
 ```toml
 [dependencies]
-fibre-gateway-client = { git = "https://github.com/celestiaorg/fibre-gateway-client", features = ["http"] }
+fibre-gateway-client = { version = "0.1", features = ["http"] }
 serde_json = "1"
 ```
 
@@ -370,11 +370,11 @@ Verifying a 128 MiB − 5 blob on one laptop core (Apple M5 Pro) takes about 0.2
 
 ### Rust
 
-The crate is not on crates.io. Add it from the repository:
+Add it from crates.io:
 
 ```toml
 [dependencies]
-fibre-gateway-client = { git = "https://github.com/celestiaorg/fibre-gateway-client", features = ["http"] }
+fibre-gateway-client = { version = "0.1", features = ["http"] }
 ```
 
 - `Client::new(url, token)` builds a blocking client with the default [timeouts](#timeouts).
