@@ -117,6 +117,7 @@ Reserves gateway instances before a large job. When to use it: [Capacity](client
 | 404 | `not_found` | all | Unknown path, or a method other than `POST` (or `GET` on capacity) |
 | 413 | `invalid_length` | put | `Content-Length` missing or outside the size range |
 | 429 | `capacity` | put, get | All slots for this endpoint on this instance are busy. Not queued |
+| 429 | `priority_only` | put, get | The instance is reserving capacity for priority traffic and refused this token. Honor the `Retry-After` header, then retry |
 | 429 | `rate_limited` | capacity | The reservation changed less than 10 s ago. Retry later |
 | 502 | `upload_failed` | put | Upload or chain confirmation failed. Outcome unknown |
 | 502 | `receipt_unavailable` | put | Confirmed, but the gateway could not look up the transaction. Outcome unknown |

@@ -72,7 +72,15 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '429':
-          description: capacity. All upload slots on this instance are busy. Not queued.
+          description: >-
+            capacity when all upload slots on this instance are busy; not
+            queued. priority_only when the instance is reserving capacity for
+            priority traffic and refused this token; back off and retry per the
+            Retry-After header.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying, sent with priority_only.
+              schema: { type: integer }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -140,7 +148,15 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '429':
-          description: capacity. All read slots on this instance are busy. Not queued.
+          description: >-
+            capacity when all read slots on this instance are busy; not queued.
+            priority_only when the instance is reserving capacity for priority
+            traffic and refused this token; back off and retry per the
+            Retry-After header.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying, sent with priority_only.
+              schema: { type: integer }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -369,6 +385,7 @@ components:
             - forbidden
             - not_found
             - capacity
+            - priority_only
             - rate_limited
             - upload_failed
             - receipt_unavailable

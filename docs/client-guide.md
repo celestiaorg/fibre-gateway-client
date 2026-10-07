@@ -265,6 +265,9 @@ Every status code is listed in the [API reference](put-api.md#errors).
 | Network error during a put | Yes, with a new request | Same as `502` on put |
 | `400`, `401`, `404`, `413` | No | Fix the request or token first |
 
+**Priority traffic.** Under high load an instance may refuse some tokens with `429 priority_only`.
+Treat it like any other `429`, but when the `Retry-After` header is present wait that many seconds before retrying.
+
 **Unknown outcome.** After a `502` or `504` on put, or a network error once the body started,
 the blob may already be stored and paid for. A retry stores and pays again.
 That is fine: keep the receipt you finally get.
