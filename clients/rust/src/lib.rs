@@ -13,7 +13,8 @@ mod http;
 pub use http::{CapacityStatus, Client, HttpError, Timeouts};
 
 use rsema1d::codec::compute_rlc;
-use rsema1d::crypto::{derive_coefficients, hash_internal, hash_leaf, sha256, MerkleTree};
+use rsema1d::crypto::{derive_coefficients, hash_internal, hash_leaf, MerkleTree};
+use rsema1d::{commitment_from_original_rows, Parameters};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
@@ -100,11 +101,15 @@ pub fn verify_commitment(
     if siblings.len() != ROW_ROOT_SIBLINGS {
         return Err(VerifyError::InvalidProof);
     }
-    let roots = commitment_roots(data, siblings);
-    let mut pair = [0u8; 64];
-    pair[..32].copy_from_slice(&roots.row_root);
-    pair[32..].copy_from_slice(&roots.rlc_root);
-    if sha256(&pair) != blob_id[1..] {
+    let row_size = row_size(data.len());
+    let rows = OriginalRows::new(data, row_size);
+    let rows: Vec<Cow<[u8]>> = (0..ORIGINAL_ROWS).map(|i| rows.row(i)).collect();
+    let rows: Vec<&[u8]> = rows.iter().map(|row| row.as_ref()).collect();
+    let params = Parameters::new(ORIGINAL_ROWS, PARITY_ROWS, row_size)
+        .map_err(|_| VerifyError::InvalidDataSize(data.len()))?;
+    let commitment = commitment_from_original_rows(&rows, &params, siblings)
+        .map_err(|_| VerifyError::InvalidProof)?;
+    if commitment != blob_id[1..] {
         return Err(VerifyError::Mismatch);
     }
     Ok(())

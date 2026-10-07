@@ -1,37 +1,19 @@
 # Service contract
 
-What the Fibre gateway promises, and what it expects from clients.
-It covers `POST /v1/put`, `POST /v1/get` and `/v1/capacity`.
-Formats are in the [API reference](put-api.md); how-to is in the [client guide](client-guide.md).
-
-## The gateway provides
-
 | Item | Promise |
 |---|---|
 | Endpoint | `https://cf.celestia-corto.com:8443`, round-robin over the instances serving traffic. Chain `corto-10` |
-| Transport | HTTPS, TLS 1.2 or newer, publicly trusted certificate |
-| Auth | Bearer tokens issued by Celestia, valid on every instance. Rotation without downtime |
+| Auth | Bearer tokens issued by Celestia |
 | Blob size | 33,554,427 through 134,217,723 bytes, inclusive, excluding the 5-byte blob header added by the gateway ([blob sizes](client-guide.md#blob-sizes)) |
 | Put | Returns only after the chain confirms the blob, with a receipt and a commitment proof |
+| Availability | A `200` put means the blob is available: validators holding at least 2/3 of the stake signed that they store their pieces, and the chain accepted the payment. It stays readable for the retention period, even if some validators go offline |
 | Get | Returns exactly the bytes that were put, with an exact `Content-Length` |
 | Retention | Readable for 24 h after the put. After that `/v1/get` returns `404` |
 | Put deadline | 150 s |
 | Get deadline | 120 s |
 | Capacity per instance | 48 concurrent puts and 32 concurrent gets. Above that, `429` at once |
-| Capacity reservation | 3–20 instances for up to 120 minutes, for tokens allowed to reserve. One fleet-wide reservation, at most one change per 10 s |
 | Payment | The gateway pays for every put, including retries |
 | Idempotency | None. A retried put may store a second copy |
-
-## Measured performance
-
-**Not an SLA.** Sustained whole-network figures, with no read errors or hash mismatches:
-
-| Metric | Put | Get |
-|---|---|---|
-| Throughput | 14.4 GiB/s | 26.2 GiB/s |
-| Latency p50 / p99 | 4.7 s / 15.0 s | 3.1 s / 7.7 s |
-
-Put latency includes chain confirmation. A slow block delays every put in flight, so p99 follows block gaps.
 
 ## Clients must
 
