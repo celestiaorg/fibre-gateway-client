@@ -1,8 +1,8 @@
-//! Blocking client for `/v1/put`, `/v1/get` and `/v1/capacity`.
+//! Async client for `/v1/put`, `/v1/get` and `/v1/capacity`, requiring Tokio.
 
-use std::io::Read;
 use std::time::Duration;
 
+use bytes::Bytes;
 use serde::Deserialize;
 
 use crate::{verify, PutResponse, Receipt, VerifyError, MAX_DATA_SIZE};
@@ -31,17 +31,11 @@ pub struct CapacityStatus {
 #[derive(Debug, thiserror::Error)]
 pub enum HttpError {
     #[error("request failed: {0}")]
-    Request(Box<ureq::Error>),
-    #[error("reading response: {0}")]
-    Io(#[from] std::io::Error),
+    Request(#[from] reqwest::Error),
     #[error(transparent)]
     Verify(#[from] VerifyError),
-}
-
-impl From<ureq::Error> for HttpError {
-    fn from(err: ureq::Error) -> Self {
-        Self::Request(Box::new(err))
-    }
+    #[error("verification task failed: {0}")]
+    Join(#[from] tokio::task::JoinError),
 }
 
 /// Request timeouts. The defaults outlast the gateway's own deadlines.
@@ -67,7 +61,7 @@ impl Default for Timeouts {
 
 /// Gateway client. `base_url` is like `https://cf.celestia-corto.com:8443`.
 pub struct Client {
-    agent: ureq::Agent,
+    agent: reqwest::Client,
     base_url: String,
     token: String,
     timeouts: Timeouts,
@@ -86,9 +80,11 @@ impl Client {
         timeouts: Timeouts,
     ) -> Self {
         Self {
-            agent: ureq::AgentBuilder::new()
-                .timeout_connect(timeouts.connect)
-                .build(),
+            agent: reqwest::Client::builder()
+                .connect_timeout(timeouts.connect)
+                .retry(reqwest::retry::never())
+                .build()
+                .expect("failed to build HTTP client"),
             base_url: base_url.into(),
             token: token.into(),
             timeouts,
@@ -96,54 +92,79 @@ impl Client {
     }
 
     /// Puts `data` and returns the receipt once its commitment is verified against `data`.
-    pub fn put(&self, data: &[u8]) -> Result<Receipt, HttpError> {
+    pub async fn put(&self, data: Bytes) -> Result<Receipt, HttpError> {
         let put: PutResponse = self
             .agent
-            .post(&format!("{}/v1/put", self.base_url))
+            .post(format!("{}/v1/put", self.base_url))
             .timeout(self.timeouts.put)
-            .set("Authorization", &format!("Bearer {}", self.token))
-            .set("Content-Type", "application/octet-stream")
-            .send_bytes(data)?
-            .into_json()?;
-        verify(data, &put.receipt, &put.commitment_proof)?;
-        Ok(put.receipt)
+            .bearer_auth(&self.token)
+            .header("Content-Type", "application/octet-stream")
+            .body(data.clone())
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        Ok(tokio::task::spawn_blocking(move || {
+            verify(&data, &put.receipt, &put.commitment_proof)?;
+            Ok::<_, VerifyError>(put.receipt)
+        })
+        .await??)
     }
 
     /// Gets the blob for `blob_id`.
-    pub fn get(&self, blob_id: &str) -> Result<Vec<u8>, HttpError> {
-        let res = self
+    pub async fn get(&self, blob_id: &str) -> Result<Vec<u8>, HttpError> {
+        let mut res = self
             .agent
-            .post(&format!("{}/v1/get", self.base_url))
+            .post(format!("{}/v1/get", self.base_url))
             .timeout(self.timeouts.get)
-            .set("Authorization", &format!("Bearer {}", self.token))
-            .send_json(serde_json::json!({ "blob_id": blob_id }))?;
+            .bearer_auth(&self.token)
+            .json(&serde_json::json!({ "blob_id": blob_id }))
+            .send()
+            .await?
+            .error_for_status()?;
         let mut data = Vec::new();
-        res.into_reader()
-            .take(MAX_DATA_SIZE as u64 + 1)
-            .read_to_end(&mut data)?;
+        while data.len() < MAX_DATA_SIZE + 1 {
+            let Some(chunk) = res.chunk().await? else {
+                break;
+            };
+            let len = chunk.len().min(MAX_DATA_SIZE + 1 - data.len());
+            data.extend_from_slice(&chunk[..len]);
+        }
         Ok(data)
     }
 
     /// Reserves at least `instances` gateway instances (3..=20) for `minutes` (1..=120).
     /// The token must be allowed to reserve capacity.
-    pub fn capacity(&self, instances: u32, minutes: u32) -> Result<CapacityStatus, HttpError> {
+    pub async fn capacity(
+        &self,
+        instances: u32,
+        minutes: u32,
+    ) -> Result<CapacityStatus, HttpError> {
         Ok(self
             .agent
-            .post(&format!("{}/v1/capacity", self.base_url))
+            .post(format!("{}/v1/capacity", self.base_url))
             .timeout(CAPACITY_TIMEOUT)
-            .set("Authorization", &format!("Bearer {}", self.token))
-            .send_json(serde_json::json!({"instances": instances, "minutes": minutes}))?
-            .into_json()?)
+            .bearer_auth(&self.token)
+            .json(&serde_json::json!({"instances": instances, "minutes": minutes}))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
     }
 
     /// Returns the current reservation and fleet size.
-    pub fn capacity_status(&self) -> Result<CapacityStatus, HttpError> {
+    pub async fn capacity_status(&self) -> Result<CapacityStatus, HttpError> {
         Ok(self
             .agent
-            .get(&format!("{}/v1/capacity", self.base_url))
+            .get(format!("{}/v1/capacity", self.base_url))
             .timeout(CAPACITY_TIMEOUT)
-            .set("Authorization", &format!("Bearer {}", self.token))
-            .call()?
-            .into_json()?)
+            .bearer_auth(&self.token)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
     }
 }

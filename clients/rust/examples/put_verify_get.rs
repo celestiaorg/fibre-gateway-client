@@ -6,30 +6,32 @@
 //! ```
 
 use base64::{engine::general_purpose::STANDARD, Engine};
+use bytes::Bytes;
 use fibre_gateway_client::{parse_blob_id, Client};
 use sha2::{Digest, Sha256};
 
 type Error = Box<dyn std::error::Error>;
 
-fn main() -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     let path = std::env::args()
         .nth(1)
         .ok_or("usage: put_verify_get <blob>")?;
-    let data = std::fs::read(path)?;
+    let data = Bytes::from(std::fs::read(path)?);
     let digest = Sha256::digest(&data);
     let client = Client::new(std::env::var("GW")?, std::env::var("TOKEN")?);
 
     // 1. Put. `put` returns the receipt only after its commitment verified against `data`.
-    let receipt = client.put(&data)?;
+    let receipt = client.put(data.clone()).await?;
 
     // 2. Check that the chain accepted a PayForFibre for the same commitment.
     let url = format!("{}/tx?hash=0x{}", std::env::var("RPC")?, receipt.tx_hash);
-    let tx: serde_json::Value = ureq::get(&url).call()?.into_json()?;
+    let tx: serde_json::Value = reqwest::get(&url).await?.error_for_status()?.json().await?;
     let commitment = &parse_blob_id(&receipt.blob_id)?[1..];
     check_pay_for_fibre(&tx, commitment)?;
 
     // 3. Get, and check that the bytes are the ones we put.
-    let back = client.get(&receipt.blob_id)?;
+    let back = client.get(&receipt.blob_id).await?;
     if back.len() != data.len() || Sha256::digest(&back) != digest {
         return Err("read-back does not match".into());
     }

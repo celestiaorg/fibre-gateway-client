@@ -84,28 +84,32 @@ The crate [`fibre-gateway-client`](https://crates.io/crates/fibre-gateway-client
 ```toml
 [dependencies]
 fibre-gateway-client = { version = "0.1", features = ["http"] }
+bytes = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde_json = "1"
 ```
 
 This is [clients/rust/examples/quickstart.rs](../clients/rust/examples/quickstart.rs):
 
 ```rust
+use bytes::Bytes;
 use fibre_gateway_client::Client;
 
 const GATEWAY: &str = "https://cf.celestia-corto.com:8443";
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = std::env::args().nth(1).ok_or("usage: quickstart <blob>")?;
-    let data = std::fs::read(path)?;
+    let data = Bytes::from(std::fs::read(path)?);
     let client = Client::new(GATEWAY, std::env::var("TOKEN")?);
 
     // `put` checks the commitment proof against `data` before it returns the receipt.
-    let receipt = client.put(&data)?;
+    let receipt = client.put(data.clone()).await?;
     // After the check, `blob_id` is all you need to keep.
     std::fs::write("blob_id.txt", &receipt.blob_id)?;
 
-    let back = client.get(&receipt.blob_id)?;
-    if back != data {
+    let back = client.get(&receipt.blob_id).await?;
+    if back.as_slice() != data.as_ref() {
         return Err("read-back does not match".into());
     }
     println!("ok {} {}", receipt.blob_id, receipt.tx_hash);
@@ -378,16 +382,16 @@ Add it from crates.io:
 ```toml
 [dependencies]
 fibre-gateway-client = { version = "0.1", features = ["http"] }
+bytes = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
-- `Client::new(url, token)` builds a blocking client with the default [timeouts](#timeouts).
-- `Client::put(&data)` uploads, verifies the commitment and returns the `Receipt`.
-  It fails with `HttpError::Verify` if the proof does not match your data.
-- `Client::get(blob_id)` returns the blob bytes.
-- `Client::capacity(instances, minutes)` reserves [capacity](#capacity); `Client::capacity_status()` reads it.
-- A non-`200` status is `HttpError::Request(e)` where `*e` is `ureq::Error::Status(code, response)`.
-  `response.into_string()` gives the `{"error":"<code>"}` body.
-  Network errors are `ureq::Error::Transport`.
+- `Client::new(url, token)` builds an async client with the default [timeouts](#timeouts). Requests require a Tokio runtime.
+- `client.put(data).await` takes `bytes::Bytes`, uploads, verifies the commitment on Tokio's blocking pool and returns the `Receipt`. It fails with `HttpError::Verify` if the proof does not match your data.
+- `client.get(blob_id).await` returns the blob bytes.
+- `client.capacity(instances, minutes).await` reserves [capacity](#capacity); `client.capacity_status().await` reads it.
+- HTTP 4xx/5xx responses, network errors and response decoding errors are `HttpError::Request(e)`, where `e` is a `reqwest::Error`. Use `e.status()` for the HTTP status and `e.is_timeout()` for timeouts; the error does not retain the response body.
+- `HttpError::Join` means the verification task failed to complete.
 - Without the `http` feature you get the types and `verify` only, for use with your own HTTP stack.
 
 Examples, run from `clients/rust`:
