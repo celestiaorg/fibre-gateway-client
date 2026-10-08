@@ -47,16 +47,23 @@ fn read_request(stream: &TcpStream) -> (String, Vec<u8>) {
     reader.read_line(&mut line).unwrap();
     let target = line.split(' ').nth(1).unwrap().to_string();
     let mut length = 0;
+    let mut authorized = false;
     loop {
         let mut header = String::new();
         reader.read_line(&mut header).unwrap();
         if header == "\r\n" {
             break;
         }
-        if let Some(v) = header.to_ascii_lowercase().strip_prefix("content-length:") {
-            length = v.trim().parse().unwrap();
+        let (name, value) = header.split_once(':').unwrap();
+        if name.eq_ignore_ascii_case("content-length") {
+            length = value.trim().parse().unwrap();
+        }
+        if name.eq_ignore_ascii_case("authorization") {
+            assert_eq!(value.trim(), "Bearer token");
+            authorized = true;
         }
     }
+    assert!(authorized, "missing authorization header");
     let mut body = vec![0; length];
     reader.read_exact(&mut body).unwrap();
     (target, body)
@@ -242,7 +249,7 @@ async fn waiting_for_a_response_does_not_block_other_tasks() {
         read_request(&stream);
         recv.recv_timeout(Duration::from_secs(5)).unwrap();
         stream
-            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\nConnection: close\r\n\r\nabc")
+            .write_all(b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\nabc")
             .unwrap();
     });
     let client = Client::new(url, "token");

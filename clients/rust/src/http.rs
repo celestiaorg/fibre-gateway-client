@@ -3,6 +3,8 @@
 use std::time::Duration;
 
 use bytes::Bytes;
+use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
+use reqwest::Url;
 use serde::Deserialize;
 
 use crate::{verify, PutResponse, Receipt, VerifyError, MAX_DATA_SIZE};
@@ -62,31 +64,48 @@ impl Default for Timeouts {
 /// Gateway client. `base_url` is like `https://cf.celestia-corto.com:8443`.
 pub struct Client {
     agent: reqwest::Client,
-    base_url: String,
-    token: String,
+    put_url: Url,
+    get_url: Url,
+    capacity_url: Url,
     timeouts: Timeouts,
 }
 
 impl Client {
     /// Client with the default [`Timeouts`].
+    ///
+    /// # Panics
+    /// Panics if the URL or authorization header is invalid, or HTTP client initialization fails.
     pub fn new(base_url: impl Into<String>, token: impl Into<String>) -> Self {
         Self::with_timeouts(base_url, token, Timeouts::default())
     }
 
     /// Client with custom timeouts.
+    ///
+    /// # Panics
+    /// Panics if the URL or authorization header is invalid, or HTTP client initialization fails.
     pub fn with_timeouts(
         base_url: impl Into<String>,
         token: impl Into<String>,
         timeouts: Timeouts,
     ) -> Self {
+        let base_url = base_url.into();
+        let mut authorization = HeaderValue::from_str(&format!("Bearer {}", token.into()))
+            .expect("invalid authorization header");
+        authorization.set_sensitive(true);
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, authorization);
+
         Self {
             agent: reqwest::Client::builder()
+                .default_headers(headers)
                 .connect_timeout(timeouts.connect)
                 .retry(reqwest::retry::never())
                 .build()
                 .expect("failed to build HTTP client"),
-            base_url: base_url.into(),
-            token: token.into(),
+            put_url: Url::parse(&format!("{base_url}/v1/put")).expect("invalid gateway URL"),
+            get_url: Url::parse(&format!("{base_url}/v1/get")).expect("invalid gateway URL"),
+            capacity_url: Url::parse(&format!("{base_url}/v1/capacity"))
+                .expect("invalid gateway URL"),
             timeouts,
         }
     }
@@ -95,9 +114,8 @@ impl Client {
     pub async fn put(&self, data: Bytes) -> Result<Receipt, HttpError> {
         let put: PutResponse = self
             .agent
-            .post(format!("{}/v1/put", self.base_url))
+            .post(self.put_url.clone())
             .timeout(self.timeouts.put)
-            .bearer_auth(&self.token)
             .header("Content-Type", "application/octet-stream")
             .body(data.clone())
             .send()
@@ -116,14 +134,17 @@ impl Client {
     pub async fn get(&self, blob_id: &str) -> Result<Vec<u8>, HttpError> {
         let mut res = self
             .agent
-            .post(format!("{}/v1/get", self.base_url))
+            .post(self.get_url.clone())
             .timeout(self.timeouts.get)
-            .bearer_auth(&self.token)
             .json(&serde_json::json!({ "blob_id": blob_id }))
             .send()
             .await?
             .error_for_status()?;
-        let mut data = Vec::new();
+        let capacity = res
+            .content_length()
+            .unwrap_or(0)
+            .min((MAX_DATA_SIZE + 1) as u64) as usize;
+        let mut data = Vec::with_capacity(capacity);
         while data.len() < MAX_DATA_SIZE + 1 {
             let Some(chunk) = res.chunk().await? else {
                 break;
@@ -143,9 +164,8 @@ impl Client {
     ) -> Result<CapacityStatus, HttpError> {
         Ok(self
             .agent
-            .post(format!("{}/v1/capacity", self.base_url))
+            .post(self.capacity_url.clone())
             .timeout(CAPACITY_TIMEOUT)
-            .bearer_auth(&self.token)
             .json(&serde_json::json!({"instances": instances, "minutes": minutes}))
             .send()
             .await?
@@ -158,9 +178,8 @@ impl Client {
     pub async fn capacity_status(&self) -> Result<CapacityStatus, HttpError> {
         Ok(self
             .agent
-            .get(format!("{}/v1/capacity", self.base_url))
+            .get(self.capacity_url.clone())
             .timeout(CAPACITY_TIMEOUT)
-            .bearer_auth(&self.token)
             .send()
             .await?
             .error_for_status()?
