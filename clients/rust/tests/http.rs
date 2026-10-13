@@ -279,6 +279,42 @@ async fn http_errors_keep_code_message_and_retry_after() {
 }
 
 #[tokio::test]
+async fn redirects_are_not_followed() {
+    let (url, server) = serve_status("307 Temporary Redirect", vec![String::new()]);
+    let err = Client::new(url, "token")
+        .put(Bytes::from_static(b"data"))
+        .await
+        .unwrap_err();
+    assert_eq!(err.status(), Some(307));
+    assert_eq!(server.join().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn huge_error_bodies_are_not_buffered() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        read_request(&stream);
+        let body = "x".repeat(64 << 20);
+        // The client stops reading and closes the connection, so this write fails.
+        let _ = write!(
+            stream,
+            "HTTP/1.1 502 Bad Gateway\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        );
+    });
+    let err = Client::new(url, "token").get("00").await.unwrap_err();
+    let HttpError::Status(e) = &err else {
+        panic!("{err}")
+    };
+    assert_eq!((e.status, e.code.as_deref()), (502, None));
+    tokio::task::spawn_blocking(move || server.join().unwrap())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
 async fn host_names_resolve_through_the_rotating_resolver() {
     // localhost may resolve to ::1 and 127.0.0.1; rotation must still fall back to the one listening.
     for _ in 0..3 {

@@ -396,7 +396,8 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 - `client.put(data).await` takes `bytes::Bytes`, uploads, verifies the commitment on Tokio's blocking pool and returns the `Receipt`. It fails with `HttpError::Verify` if the proof does not match your data.
 - `client.get(blob_id).await` returns the blob bytes.
 - `client.capacity(instances, minutes).await` reserves [capacity](#capacity); `client.capacity_status().await` reads it.
-- HTTP 4xx/5xx responses, network errors and response decoding errors are `HttpError::Request(e)`, where `e` is a `reqwest::Error`. Use `e.status()` for the HTTP status and `e.is_timeout()` for timeouts; the error does not retain the response body.
+- A non-2xx response is `HttpError::Status(e)`: `e.status`, the body's `e.code` (like `capacity` or `invalid_length`) and `e.message`, and `e.retry_after` from the `Retry-After` header. `code` and `message` are `None` when the body is not the gateway's JSON, for example an error page from a proxy. `err.status()` returns the status for any error.
+- Network and response decoding errors are `HttpError::Request(e)`, where `e` is a `reqwest::Error`; use `e.is_timeout()` for timeouts.
 - `HttpError::Join` means the verification task failed to complete.
 - Without the `http` feature you get the types and `verify` only, for use with your own HTTP stack.
 

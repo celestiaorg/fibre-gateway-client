@@ -13,6 +13,9 @@ use serde::Deserialize;
 
 use crate::{verify, PutResponse, Receipt, VerifyError, MAX_DATA_SIZE};
 
+/// Most of an error body read; gateway error bodies are a few dozen bytes.
+const MAX_ERROR_BODY: usize = 64 << 10;
+
 /// Whole capacity request. The gateway answers within about 5 s.
 const CAPACITY_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -88,7 +91,7 @@ impl HttpError {
 
 /// Turns a non-2xx response into [`HttpError::Status`], keeping the body's
 /// `error` and `message` and the `Retry-After` header.
-async fn check(res: Response) -> Result<Response, HttpError> {
+async fn check(mut res: Response) -> Result<Response, HttpError> {
     let status = res.status();
     if status.is_success() {
         return Ok(res);
@@ -104,11 +107,14 @@ async fn check(res: Response) -> Result<Response, HttpError> {
         error: Option<String>,
         message: Option<String>,
     }
-    let body: Option<Body> = res
-        .bytes()
-        .await
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok());
+    let mut bytes = Vec::new();
+    while bytes.len() < MAX_ERROR_BODY {
+        let Ok(Some(chunk)) = res.chunk().await else {
+            break;
+        };
+        bytes.extend_from_slice(&chunk[..chunk.len().min(MAX_ERROR_BODY - bytes.len())]);
+    }
+    let body: Option<Body> = serde_json::from_slice(&bytes).ok();
     let (code, message) = body.map_or((None, None), |b| (b.error, b.message));
     Err(HttpError::Status(ApiError {
         status: status.as_u16(),
@@ -207,6 +213,8 @@ impl Client {
                 .default_headers(headers)
                 .connect_timeout(timeouts.connect)
                 .retry(reqwest::retry::never())
+                // A 307/308 would resend the put body and could store the blob twice.
+                .redirect(reqwest::redirect::Policy::none())
                 .dns_resolver(Arc::new(RotatingResolver::default()))
                 // HTTP/2 would multiplex every request over one connection, so one
                 // instance, even if a dependency enables reqwest's http2 feature.
