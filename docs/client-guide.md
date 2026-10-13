@@ -20,11 +20,9 @@ What we promise is in the [service contract](contract.md).
 
 ## Quick start
 
-
 This gateway provides easy access to a Celestia Fibre deployment. The gateway accepts a raw payload, Reed-Solomon encodes it, and sends the resulting `blob` to Celestia for storage.
 On success, the gatway returns a `blob_id` - a binding commitment to the posted data. Before accepting, clients should verify that the returned commitment matches their payload
 using the provided library (see Rust example below).
-
 
 | Item | Value |
 |---|---|
@@ -36,15 +34,14 @@ using the provided library (see Rust example below).
 Note: The −5 reserves space for Fibre's 5-byte blob header. The gateway adds this header for you; send only your data.
 Send the token using an authroization header (`Authorization: Bearer <token>`) on every request.
 
-**Scaling**
+### Scaling
 
-To minimize costs, the gateway scales down after inactivity. Before running a load test, we recommend scaling it up manually to ensure that capacity is available. 
+To minimize costs, the gateway scales down after inactivity. Before running a load test, we recommend scaling it up manually to ensure that capacity is available.
 
 | Endpoint | Meaning |
 |---|---|
 | `POST /v1/capacity` with `{"instances":20,"minutes":60}` | Keep at least `instances` (3–20) up for `minutes` (1–120) |
 | `GET /v1/capacity` | Current reservation and fleet size |
-
 
 ### Curl (Put and Get without Verification)
 
@@ -307,7 +304,7 @@ Each check fails if the gateway committed to bytes other than yours. After it pa
 Reads need no check on your side: the gateway checks every piece it downloads against `blob_id`.
 
 Checking the chain is optional, see below. To write your own verifier, see
-[How verification works](#how-verification-works).
+the reference verifier in [`clients/python/fibre_verify.py`](../clients/python/fibre_verify.py).
 
 ### On-chain check (optional)
 
