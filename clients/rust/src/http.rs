@@ -1,7 +1,7 @@
 //! Async client for `/v1/put`, `/v1/get` and `/v1/capacity`, requiring Tokio.
 
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
@@ -10,7 +10,6 @@ use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, RETRY_AFTER};
 use reqwest::{Response, Url};
 use serde::Deserialize;
-use tokio::sync::Mutex as AsyncMutex;
 
 use crate::{verify, PutResponse, Receipt, VerifyError, MAX_DATA_SIZE};
 
@@ -164,14 +163,14 @@ fn rotate(mut addrs: Vec<SocketAddr>, start: usize) -> Vec<SocketAddr> {
 /// How the client reaches the gateway fleet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Protocol {
-    /// HTTP/1.1 with the [`RotatingResolver`]: one connection per in-flight
-    /// request, each landing on a different instance. The default; it spreads
+    /// HTTP/1.1 with a resolver that rotates the instance addresses: one
+    /// connection per in-flight request, each landing on a different instance. The default; it spreads
     /// load without an upload penalty.
     #[default]
     Http1,
     /// HTTP/2 with one multiplexed connection per instance. Resolves the fleet,
-    /// keeps a connection to every instance, sends each request to the least-busy
-    /// one and re-resolves about once a minute. Large uploads can be slower than
+    /// keeps a connection to every instance, sends requests to them in turn and
+    /// re-resolves about once a minute. Large uploads can be slower than
     /// HTTP/1.1 because the server controls the per-stream flow-control window.
     Http2,
 }
@@ -197,17 +196,11 @@ struct Instance {
     addr: SocketAddr,
     /// reqwest client pinned to `addr`; TLS and SNI still use the hostname.
     agent: reqwest::Client,
-    /// Requests currently in flight to this instance.
-    in_flight: AtomicUsize,
     /// Skip this instance until this instant after a connect failure.
     cooldown: Mutex<Option<Instant>>,
 }
 
 impl Instance {
-    fn load(&self) -> usize {
-        self.in_flight.load(Ordering::Relaxed)
-    }
-
     fn cooling(&self, now: Instant) -> bool {
         self.cooldown
             .lock()
@@ -220,29 +213,20 @@ impl Instance {
     }
 }
 
-/// Counts one in-flight request to an instance and decrements it on drop, so
-/// [`select`] keeps steering new requests to the least-busy instance.
-struct InFlight(Arc<Instance>);
-
-impl Drop for InFlight {
-    fn drop(&mut self) {
-        self.0.in_flight.fetch_sub(1, Ordering::Relaxed);
-    }
-}
-
-/// Least-busy instance not in cooldown, or the least-busy overall when every
-/// instance is cooling. `exclude` holds addresses already tried this request.
+/// The next instance round-robin from `start` that is not in cooldown, or the
+/// next one at all when every instance is cooling. `exclude` holds addresses
+/// already tried this request.
 fn select(
     instances: &[Arc<Instance>],
+    start: usize,
     now: Instant,
     exclude: &[SocketAddr],
 ) -> Option<Arc<Instance>> {
+    let n = instances.len();
     let pick = |allow_cooling: bool| {
-        instances
-            .iter()
-            .filter(|i| !exclude.contains(&i.addr))
-            .filter(|i| allow_cooling || !i.cooling(now))
-            .min_by_key(|i| i.load())
+        (0..n)
+            .map(|k| &instances[(start + k) % n])
+            .find(|i| !exclude.contains(&i.addr) && (allow_cooling || !i.cooling(now)))
             .cloned()
     };
     pick(false).or_else(|| pick(true))
@@ -275,12 +259,11 @@ struct Pool {
     port: u16,
     headers: HeaderMap,
     connect_timeout: Duration,
-    created: Instant,
-    /// Milliseconds since `created` of the last resolve attempt.
-    last_refresh: AtomicU64,
+    /// When the list was last resolved, or tried to be.
+    last_refresh: Mutex<Option<Instant>>,
     instances: RwLock<Vec<Arc<Instance>>>,
-    /// Serializes refreshes so a burst triggers one resolve, not one each.
-    refresh_gate: AsyncMutex<()>,
+    /// Round-robin position.
+    next: AtomicUsize,
 }
 
 impl Pool {
@@ -290,10 +273,9 @@ impl Pool {
             port,
             headers,
             connect_timeout,
-            created: Instant::now(),
-            last_refresh: AtomicU64::new(0),
+            last_refresh: Mutex::new(None),
             instances: RwLock::new(Vec::new()),
-            refresh_gate: AsyncMutex::new(()),
+            next: AtomicUsize::new(0),
         }
     }
 
@@ -317,7 +299,6 @@ impl Pool {
         Arc::new(Instance {
             addr,
             agent,
-            in_flight: AtomicUsize::new(0),
             cooldown: Mutex::new(None),
         })
     }
@@ -327,9 +308,10 @@ impl Pool {
     }
 
     fn stale(&self) -> bool {
-        let now = self.created.elapsed().as_millis() as u64;
-        now.saturating_sub(self.last_refresh.load(Ordering::Relaxed))
-            >= REFRESH_EVERY.as_millis() as u64
+        self.last_refresh
+            .lock()
+            .unwrap()
+            .is_none_or(|at| at.elapsed() >= REFRESH_EVERY)
     }
 
     async fn resolve(&self) -> Result<Vec<SocketAddr>, HttpError> {
@@ -348,39 +330,21 @@ impl Pool {
         Ok(addrs)
     }
 
-    /// Current instances. A stale list is refreshed by one caller while the others
-    /// keep using it, and a failed refresh keeps it: only an empty list waits on
-    /// or fails with the lookup.
+    /// Current instances, re-resolved when stale. A failed refresh keeps a
+    /// non-empty list, so only an empty one fails with the lookup error.
     async fn ready(&self) -> Result<Vec<Arc<Instance>>, HttpError> {
         let list = self.snapshot();
-        if !list.is_empty() {
-            if !self.stale() {
-                return Ok(list);
-            }
-            let Ok(_gate) = self.refresh_gate.try_lock() else {
-                return Ok(list);
-            };
-            // Count the attempt so a failing resolver is not retried on every request.
-            self.touch();
-            return Ok(match self.resolve().await {
-                Ok(addrs) => self.install(&list, &addrs),
-                Err(_) => list,
-            });
-        }
-        let _gate = self.refresh_gate.lock().await;
-        // Another task may have filled the list while we waited for the gate.
-        let list = self.snapshot();
-        if !list.is_empty() {
+        if !list.is_empty() && !self.stale() {
             return Ok(list);
         }
-        let addrs = self.resolve().await?;
-        self.touch();
-        Ok(self.install(&list, &addrs))
-    }
-
-    fn touch(&self) {
-        self.last_refresh
-            .store(self.created.elapsed().as_millis() as u64, Ordering::Relaxed);
+        // Mark the attempt first: concurrent callers keep using the current list,
+        // and a failing resolver is not hit on every request.
+        *self.last_refresh.lock().unwrap() = Some(Instant::now());
+        match self.resolve().await {
+            Ok(addrs) => Ok(self.install(&list, &addrs)),
+            Err(_) if !list.is_empty() => Ok(list),
+            Err(e) => Err(e),
+        }
     }
 
     fn install(&self, list: &[Arc<Instance>], addrs: &[SocketAddr]) -> Vec<Arc<Instance>> {
@@ -389,31 +353,28 @@ impl Pool {
         fresh
     }
 
-    /// Sends the `build`-ed request to the least-busy instance, retrying on a
-    /// different instance when one fails to connect (a connect error means no
-    /// bytes were sent, so this never replays a put body to a server that saw it).
-    /// Returns the response and a lease that keeps the instance counted as busy.
+    /// Sends the `build`-ed request to the next instance, retrying on a different
+    /// one when it fails to connect (a connect error means no bytes were sent, so
+    /// this never replays a put body to a server that saw it).
     async fn send(
         &self,
         build: &(dyn Fn(&reqwest::Client) -> reqwest::RequestBuilder + Send + Sync),
-    ) -> Result<(Response, InFlight), HttpError> {
+    ) -> Result<Response, HttpError> {
         let mut tried: Vec<SocketAddr> = Vec::new();
         loop {
             let list = self.ready().await?;
-            let Some(instance) = select(&list, Instant::now(), &tried) else {
+            let start = self.next.fetch_add(1, Ordering::Relaxed);
+            let Some(instance) = select(&list, start, Instant::now(), &tried) else {
                 return Err(HttpError::Resolve(std::io::Error::new(
                     std::io::ErrorKind::NotConnected,
                     "no gateway instance could be reached",
                 )));
             };
-            instance.in_flight.fetch_add(1, Ordering::Relaxed);
-            let lease = InFlight(instance.clone());
             match build(&instance.agent).send().await {
-                Ok(res) => return Ok((res, lease)),
+                Ok(res) => return Ok(res),
                 Err(e) if e.is_connect() && tried.len() + 1 < MAX_CONNECT_ATTEMPTS => {
                     instance.mark_failed();
                     tried.push(instance.addr);
-                    drop(lease);
                 }
                 Err(e) => return Err(e.into()),
             }
@@ -549,26 +510,20 @@ impl Client {
         }
     }
 
-    /// Sends one request through the active transport. For HTTP/2 this picks the
-    /// least-busy instance and returns a lease the caller holds until the response
-    /// body is fully read, so the instance stays counted as busy for the whole
-    /// request.
+    /// Sends one request through the active transport.
     async fn dispatch(
         &self,
         build: impl Fn(&reqwest::Client) -> reqwest::RequestBuilder + Send + Sync,
-    ) -> Result<(Response, Option<InFlight>), HttpError> {
+    ) -> Result<Response, HttpError> {
         match &self.transport {
-            Transport::Http1(agent) => Ok((build(agent).send().await?, None)),
-            Transport::Http2(pool) => {
-                let (res, lease) = pool.send(&build).await?;
-                Ok((res, Some(lease)))
-            }
+            Transport::Http1(agent) => Ok(build(agent).send().await?),
+            Transport::Http2(pool) => pool.send(&build).await,
         }
     }
 
     /// Puts `data` and returns the receipt once its commitment is verified against `data`.
     pub async fn put(&self, data: Bytes) -> Result<Receipt, HttpError> {
-        let (res, lease) = self
+        let res = self
             .dispatch(|agent| {
                 agent
                     .post(self.put_url.clone())
@@ -578,7 +533,6 @@ impl Client {
             })
             .await?;
         let put: PutResponse = check(res).await?.json().await?;
-        drop(lease);
         Ok(tokio::task::spawn_blocking(move || {
             verify(&data, &put.receipt, &put.commitment_proof)?;
             Ok::<_, VerifyError>(put.receipt)
@@ -588,7 +542,7 @@ impl Client {
 
     /// Gets the blob for `blob_id`.
     pub async fn get(&self, blob_id: &str) -> Result<Vec<u8>, HttpError> {
-        let (res, _lease) = self
+        let res = self
             .dispatch(|agent| {
                 agent
                     .post(self.get_url.clone())
@@ -619,7 +573,7 @@ impl Client {
         instances: u32,
         minutes: u32,
     ) -> Result<CapacityStatus, HttpError> {
-        let (res, _lease) = self
+        let res = self
             .dispatch(|agent| {
                 agent
                     .post(self.capacity_url.clone())
@@ -632,7 +586,7 @@ impl Client {
 
     /// Returns the current reservation and fleet size.
     pub async fn capacity_status(&self) -> Result<CapacityStatus, HttpError> {
-        let (res, _lease) = self
+        let res = self
             .dispatch(|agent| {
                 agent
                     .get(self.capacity_url.clone())
@@ -663,11 +617,10 @@ mod tests {
         SocketAddr::from(([10, 0, 0, n], 8443))
     }
 
-    fn instance(n: u8, load: usize) -> Arc<Instance> {
+    fn instance(n: u8) -> Arc<Instance> {
         Arc::new(Instance {
             addr: addr(n),
             agent: reqwest::Client::new(),
-            in_flight: AtomicUsize::new(load),
             cooldown: Mutex::new(None),
         })
     }
@@ -719,7 +672,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn http2_pool_serves_requests_and_releases_leases() {
+    async fn http2_pool_serves_concurrent_requests() {
         let (port, hits) = h2_server().await;
         // localhost may also resolve to ::1, where nothing listens: that instance fails to
         // connect, and the request moves to 127.0.0.1.
@@ -738,26 +691,17 @@ mod tests {
         assert!(list
             .iter()
             .any(|i| i.addr.ip().is_loopback() && i.addr.is_ipv4()));
-        for instance in &list {
-            assert_eq!(
-                instance.in_flight.load(Ordering::Relaxed),
-                0,
-                "{}",
-                instance.addr
-            );
-        }
     }
 
     #[tokio::test]
     async fn http2_pool_keeps_its_list_when_a_refresh_fails() {
-        let mut pool = Pool::new(
+        let pool = Pool::new(
             "gateway.invalid".into(),
             8443,
             HeaderMap::new(),
             Duration::from_secs(2),
         );
-        pool.created = Instant::now() - 2 * REFRESH_EVERY;
-        *pool.instances.write().unwrap() = vec![instance(1, 0)];
+        *pool.instances.write().unwrap() = vec![instance(1)];
         assert!(pool.stale());
         let list = pool.ready().await.unwrap();
         assert_eq!(list.len(), 1);
@@ -770,7 +714,7 @@ mod tests {
 
     #[test]
     fn reconcile_reuses_existing_and_drops_gone() {
-        let existing = vec![instance(1, 5), instance(2, 0)];
+        let existing = vec![instance(1), instance(2)];
         let made = AtomicUsize::new(0);
         // Resolve now returns 2 and 3: keep 2, add 3, drop 1.
         let fresh = reconcile(&existing, &[addr(2), addr(3)], |a| {
@@ -778,7 +722,6 @@ mod tests {
             Arc::new(Instance {
                 addr: a,
                 agent: reqwest::Client::new(),
-                in_flight: AtomicUsize::new(0),
                 cooldown: Mutex::new(None),
             })
         });
@@ -787,39 +730,40 @@ mod tests {
             1,
             "only the new address is built"
         );
-        // Instance 2 is the same Arc, so its live connection and counter survive.
+        // Instance 2 is the same Arc, so its live connection survives.
         assert!(Arc::ptr_eq(&fresh[0], &existing[1]));
         assert_eq!(fresh[1].addr, addr(3));
         assert_eq!(fresh.len(), 2);
     }
 
     #[test]
-    fn select_prefers_least_busy_then_falls_back_when_all_cooling() {
+    fn select_goes_round_robin_and_skips_cooling_then_falls_back() {
         let now = Instant::now();
         let soon = now + Duration::from_secs(10);
-        let a = instance(1, 2);
-        let b = instance(2, 1);
-        let c = instance(3, 0);
-        let list = vec![a.clone(), b.clone(), c.clone()];
+        let list = vec![instance(1), instance(2), instance(3)];
+        let pick = |start, exclude: &[SocketAddr]| select(&list, start, now, exclude).unwrap().addr;
 
-        // Least in flight wins.
-        assert_eq!(select(&list, now, &[]).unwrap().addr, addr(3));
+        // Round-robin from `start`, wrapping around.
+        assert_eq!(
+            [0, 1, 2, 3].map(|n| pick(n, &[])),
+            [addr(1), addr(2), addr(3), addr(1)]
+        );
 
-        // A cooling instance is skipped even when it is the least busy.
-        *c.cooldown.lock().unwrap() = Some(soon);
-        assert_eq!(select(&list, now, &[]).unwrap().addr, addr(2));
-        // Excluding the chosen one moves to the next least busy that is not cooling.
-        assert_eq!(select(&list, now, &[addr(2)]).unwrap().addr, addr(1));
+        // A cooling instance is skipped, and so is one already tried.
+        *list[0].cooldown.lock().unwrap() = Some(soon);
+        assert_eq!(pick(0, &[]), addr(2));
+        assert_eq!(pick(0, &[addr(2)]), addr(3));
 
-        // When every instance is cooling, fall back to the least busy overall.
-        *a.cooldown.lock().unwrap() = Some(soon);
-        *b.cooldown.lock().unwrap() = Some(soon);
-        assert_eq!(select(&list, now, &[]).unwrap().addr, addr(3));
+        // When every instance is cooling, take the next one anyway.
+        for i in &list {
+            *i.cooldown.lock().unwrap() = Some(soon);
+        }
+        assert_eq!(pick(1, &[]), addr(2));
 
         // An expired cooldown counts as available again.
-        *c.cooldown.lock().unwrap() = Some(now - Duration::from_secs(1));
-        assert_eq!(select(&list, now, &[]).unwrap().addr, addr(3));
+        *list[2].cooldown.lock().unwrap() = Some(now - Duration::from_secs(1));
+        assert_eq!(pick(0, &[]), addr(3));
 
-        assert!(select(&[], now, &[]).is_none());
+        assert!(select(&[], 0, now, &[]).is_none());
     }
 }
