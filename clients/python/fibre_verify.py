@@ -23,8 +23,22 @@ _GF_ORDER = 65536
 _GF_MODULUS = 65535
 _GF_POLYNOMIAL = 0x1002D
 _CANTOR_BASIS = (
-    0x0001, 0xACCA, 0x3C0E, 0x163E, 0xC582, 0xED2E, 0x914C, 0x4012,
-    0x6C98, 0x10D8, 0x6A72, 0xB900, 0xFDB8, 0xFB34, 0xFF38, 0x991E,
+    0x0001,
+    0xACCA,
+    0x3C0E,
+    0x163E,
+    0xC582,
+    0xED2E,
+    0x914C,
+    0x4012,
+    0x6C98,
+    0x10D8,
+    0x6A72,
+    0xB900,
+    0xFDB8,
+    0xFB34,
+    0xFF38,
+    0x991E,
 )
 
 
@@ -69,16 +83,22 @@ def commitment_roots(data, siblings):
     """Returns (row_root, rlc_root) for data and the 32-byte row root siblings."""
     size = row_size(len(data))
     header = b"\x00" + len(data).to_bytes(4, "big")
-    matrix = header + bytes(data) + bytes(ORIGINAL_ROWS * size - BLOB_HEADER_LEN - len(data))
+    matrix = (
+        header + bytes(data) + bytes(ORIGINAL_ROWS * size - BLOB_HEADER_LEN - len(data))
+    )
 
-    leaves = [_hash_leaf(matrix[i * size:(i + 1) * size]) for i in range(ORIGINAL_ROWS)]
+    leaves = [
+        _hash_leaf(matrix[i * size : (i + 1) * size]) for i in range(ORIGINAL_ROWS)
+    ]
     row_root = _merkle_root(leaves)
     for sibling in siblings:
         row_root = _hash_internal(row_root, sibling)
 
     coeffs = _derive_coefficients(row_root, ORIGINAL_ROWS, PARITY_ROWS, size)
     rlcs = _rlcs(matrix, size, coeffs)
-    rlc_root = _merkle_root([_hash_leaf(rlcs[i * 16:(i + 1) * 16]) for i in range(ORIGINAL_ROWS)])
+    rlc_root = _merkle_root(
+        [_hash_leaf(rlcs[i * 16 : (i + 1) * 16]) for i in range(ORIGINAL_ROWS)]
+    )
     return row_root, rlc_root
 
 
@@ -92,7 +112,9 @@ def _hash_internal(left, right):
 
 def _merkle_root(nodes):
     while len(nodes) > 1:
-        nodes = [_hash_internal(nodes[i], nodes[i + 1]) for i in range(0, len(nodes), 2)]
+        nodes = [
+            _hash_internal(nodes[i], nodes[i + 1]) for i in range(0, len(nodes), 2)
+        ]
     return nodes[0]
 
 
@@ -120,13 +142,17 @@ def _gf_tables():
 
 def _derive_coefficients(row_root, k, n, size):
     """RLC coefficients, each as 8 GF(2^16) limbs."""
-    params = k.to_bytes(4, "little") + n.to_bytes(4, "little") + size.to_bytes(4, "little")
+    params = (
+        k.to_bytes(4, "little") + n.to_bytes(4, "little") + size.to_bytes(4, "little")
+    )
     seed = hashlib.sha256(row_root + params).digest()
     coeffs = []
     for i in range(size // 2):
         h = hashlib.sha256(seed + i.to_bytes(4, "little")).digest()
         folded = bytes(a ^ b for a, b in zip(h[:16], h[16:]))
-        coeffs.append([int.from_bytes(folded[2 * l:2 * l + 2], "little") for l in range(8)])
+        coeffs.append(
+            [int.from_bytes(folded[2 * j : 2 * j + 2], "little") for j in range(8)]
+        )
     return coeffs
 
 
@@ -147,10 +173,10 @@ def _rlcs(matrix, size, coeffs):
         packed = []
         for lb in log_bit:
             v = 0
-            for l, lc in enumerate(logs):
+            for limb, lc in enumerate(logs):
                 if lc is not None:
                     s = lb + lc
-                    v |= exp[(s + (s >> 16)) & 0xFFFF] << (16 * l)
+                    v |= exp[(s + (s >> 16)) & 0xFFFF] << (16 * limb)
             packed.append(v)
         basis.append(packed)
 
