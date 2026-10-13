@@ -276,7 +276,7 @@ struct Pool {
     headers: HeaderMap,
     connect_timeout: Duration,
     created: Instant,
-    /// Milliseconds since `created` of the last successful resolve.
+    /// Milliseconds since `created` of the last resolve attempt.
     last_refresh: AtomicU64,
     instances: RwLock<Vec<Arc<Instance>>>,
     /// Serializes refreshes so a burst triggers one resolve, not one each.
@@ -333,8 +333,11 @@ impl Pool {
     }
 
     async fn resolve(&self) -> Result<Vec<SocketAddr>, HttpError> {
-        let addrs: Vec<SocketAddr> = tokio::net::lookup_host((self.hostname.as_str(), self.port))
-            .await?
+        let lookup = tokio::net::lookup_host((self.hostname.as_str(), self.port));
+        // The system resolver has no deadline of its own.
+        let addrs: Vec<SocketAddr> = tokio::time::timeout(self.connect_timeout, lookup)
+            .await
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "resolving timed out"))??
             .collect();
         if addrs.is_empty() {
             return Err(HttpError::Resolve(std::io::Error::new(
@@ -345,25 +348,45 @@ impl Pool {
         Ok(addrs)
     }
 
-    /// Current instances, re-resolving when the list is empty or stale. Only one
-    /// refresh runs at a time; others use the list already in place.
+    /// Current instances. A stale list is refreshed by one caller while the others
+    /// keep using it, and a failed refresh keeps it: only an empty list waits on
+    /// or fails with the lookup.
     async fn ready(&self) -> Result<Vec<Arc<Instance>>, HttpError> {
         let list = self.snapshot();
-        if !list.is_empty() && !self.stale() {
-            return Ok(list);
+        if !list.is_empty() {
+            if !self.stale() {
+                return Ok(list);
+            }
+            let Ok(_gate) = self.refresh_gate.try_lock() else {
+                return Ok(list);
+            };
+            // Count the attempt so a failing resolver is not retried on every request.
+            self.touch();
+            return Ok(match self.resolve().await {
+                Ok(addrs) => self.install(&list, &addrs),
+                Err(_) => list,
+            });
         }
         let _gate = self.refresh_gate.lock().await;
-        // Another task may have refreshed while we waited for the gate.
+        // Another task may have filled the list while we waited for the gate.
         let list = self.snapshot();
-        if !list.is_empty() && !self.stale() {
+        if !list.is_empty() {
             return Ok(list);
         }
         let addrs = self.resolve().await?;
-        let fresh = reconcile(&list, &addrs, |addr| self.make_instance(addr));
-        *self.instances.write().unwrap() = fresh.clone();
+        self.touch();
+        Ok(self.install(&list, &addrs))
+    }
+
+    fn touch(&self) {
         self.last_refresh
             .store(self.created.elapsed().as_millis() as u64, Ordering::Relaxed);
-        Ok(fresh)
+    }
+
+    fn install(&self, list: &[Arc<Instance>], addrs: &[SocketAddr]) -> Vec<Arc<Instance>> {
+        let fresh = reconcile(list, addrs, |addr| self.make_instance(addr));
+        *self.instances.write().unwrap() = fresh.clone();
+        fresh
     }
 
     /// Sends the `build`-ed request to the least-busy instance, retrying on a
@@ -647,6 +670,102 @@ mod tests {
             in_flight: AtomicUsize::new(load),
             cooldown: Mutex::new(None),
         })
+    }
+
+    /// Serves `/v1/capacity` over cleartext HTTP/2 on 127.0.0.1 and counts requests.
+    async fn h2_server() -> (u16, Arc<AtomicUsize>) {
+        use hyper::service::service_fn;
+        use hyper_util::rt::{TokioExecutor, TokioIo};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let hits = Arc::new(AtomicUsize::new(0));
+        let counter = hits.clone();
+        tokio::spawn(async move {
+            loop {
+                let (stream, _) = listener.accept().await.unwrap();
+                let counter = counter.clone();
+                tokio::spawn(async move {
+                    let service = service_fn(move |_req| {
+                        counter.fetch_add(1, Ordering::Relaxed);
+                        let body = r#"{"floor":0,"expires_at":null,"target":3,"active":3,"running":3,"eta_seconds":0}"#;
+                        async move {
+                            Ok::<_, std::convert::Infallible>(hyper::Response::new(
+                                http_body_util::Full::new(Bytes::from(body)),
+                            ))
+                        }
+                    });
+                    let _ = hyper::server::conn::http2::Builder::new(TokioExecutor::new())
+                        .serve_connection(TokioIo::new(stream), service)
+                        .await;
+                });
+            }
+        });
+        (port, hits)
+    }
+
+    fn http2_client(url: String) -> Client {
+        let options = Options {
+            protocol: Protocol::Http2,
+            ..Default::default()
+        };
+        Client::with_options(url, "token", options)
+    }
+
+    fn pool(client: &Client) -> &Pool {
+        match &client.transport {
+            Transport::Http2(pool) => pool,
+            Transport::Http1(_) => panic!("not HTTP/2"),
+        }
+    }
+
+    #[tokio::test]
+    async fn http2_pool_serves_requests_and_releases_leases() {
+        let (port, hits) = h2_server().await;
+        // localhost may also resolve to ::1, where nothing listens: that instance fails to
+        // connect, and the request moves to 127.0.0.1.
+        let client = Arc::new(http2_client(format!("http://localhost:{port}")));
+        let requests: Vec<_> = (0..8)
+            .map(|_| {
+                let client = client.clone();
+                tokio::spawn(async move { client.capacity_status().await })
+            })
+            .collect();
+        for r in requests {
+            assert_eq!(r.await.unwrap().unwrap().active, 3);
+        }
+        assert_eq!(hits.load(Ordering::Relaxed), 8);
+        let list = pool(&client).snapshot();
+        assert!(list
+            .iter()
+            .any(|i| i.addr.ip().is_loopback() && i.addr.is_ipv4()));
+        for instance in &list {
+            assert_eq!(
+                instance.in_flight.load(Ordering::Relaxed),
+                0,
+                "{}",
+                instance.addr
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn http2_pool_keeps_its_list_when_a_refresh_fails() {
+        let mut pool = Pool::new(
+            "gateway.invalid".into(),
+            8443,
+            HeaderMap::new(),
+            Duration::from_secs(2),
+        );
+        pool.created = Instant::now() - 2 * REFRESH_EVERY;
+        *pool.instances.write().unwrap() = vec![instance(1, 0)];
+        assert!(pool.stale());
+        let list = pool.ready().await.unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].addr, addr(1));
+        assert!(
+            !pool.stale(),
+            "the failed attempt counts, so it is not retried at once"
+        );
     }
 
     #[test]
