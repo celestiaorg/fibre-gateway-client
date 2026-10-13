@@ -170,8 +170,11 @@ The same certificate and tokens work on every name.
 HTTP client settings:
 
 - **Keep-alive.** Reuse one client and its connection pool. Do not open a connection per request.
-- **Spread load.** A pooled connection stays on one instance, and so does a single HTTP/2 connection.
-  For high concurrency, open several connections.
+- **Spread load.** Each instance takes at most 48 puts at once (see [Limits](#limits)), so concurrency above that must reach several instances.
+  A connection stays on the instance it first reached, and a single HTTP/2 connection carries every request to one instance.
+  Use HTTP/1.1 with one connection per request in flight, and connect each one to a different address from the DNS answer:
+  system resolvers usually return the addresses in the same order, and most HTTP libraries connect to the first one, so every connection lands on the same instance.
+  The Rust crate's `Client` does this for you.
 - **No automatic replay.** Never let your HTTP library resend a put body on its own.
   Retry with a new request (see [Errors and retries](#errors-and-retries)).
   The Rust crate's `Client` never replays a `POST`.
@@ -203,7 +206,10 @@ If your data is larger than the maximum, split it into chunks and embed metadata
 | Retention | 24 h after the put |
 | Idempotency | None. A retried put may store a second copy |
 
-A slot is held for the whole request. Above the limit the gateway returns `429` at once; it does not queue.
+The put and get limits are per instance, fixed by the gateway, and shared by every token, priority tokens included; no token can raise them.
+Fleet-wide capacity is therefore about 48 × `active` puts (see [Capacity](#capacity)), and only if your connections are spread over the instances (see [Connect](#connect)).
+
+A slot is held for the whole request, up to about 155 s for a put. Above the limit the gateway returns `429 capacity` at once; it does not queue.
 If you need more capacity, [reserve it](#capacity) or ask for more instances.
 
 ## Capacity
@@ -390,7 +396,8 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 - `client.put(data).await` takes `bytes::Bytes`, uploads, verifies the commitment on Tokio's blocking pool and returns the `Receipt`. It fails with `HttpError::Verify` if the proof does not match your data.
 - `client.get(blob_id).await` returns the blob bytes.
 - `client.capacity(instances, minutes).await` reserves [capacity](#capacity); `client.capacity_status().await` reads it.
-- HTTP 4xx/5xx responses, network errors and response decoding errors are `HttpError::Request(e)`, where `e` is a `reqwest::Error`. Use `e.status()` for the HTTP status and `e.is_timeout()` for timeouts; the error does not retain the response body.
+- A non-2xx response is `HttpError::Status(e)`: `e.status`, the body's `e.code` (like `capacity` or `invalid_length`) and `e.message`, and `e.retry_after` from the `Retry-After` header. `code` and `message` are `None` when the body is not the gateway's JSON, for example an error page from a proxy. `err.status()` returns the status for any error.
+- Network and response decoding errors are `HttpError::Request(e)`, where `e` is a `reqwest::Error`; use `e.is_timeout()` for timeouts.
 - `HttpError::Join` means the verification task failed to complete.
 - Without the `http` feature you get the types and `verify` only, for use with your own HTTP stack.
 
