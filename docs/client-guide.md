@@ -42,7 +42,7 @@ To minimize costs, the gateway scales down after inactivity. Before running a lo
 
 | Endpoint | Meaning |
 |---|---|
-| `POST /v1/capacity` with `{"gib_per_second":120,"minutes":60}` or `{"instances":20,"minutes":60}` | Keep at least that throughput or `instances` (3–20) up for `minutes` (1–120) |
+| `POST /v1/capacity` with `{"gib_per_second":10,"minutes":60}` or `{"instances":20,"minutes":60}` | Keep at least that throughput or `instances` (3–20) up for `minutes` (1–120) |
 | `GET /v1/capacity` | Current reservations, fleet size and load |
 | `DELETE /v1/capacity` | Release your reservation early |
 

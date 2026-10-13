@@ -106,9 +106,9 @@ reservation (`floor`) and may scale above it with load. `gib_per_second` is roun
 ```json
 {"floor":20,"expires_at":"2026-10-04T13:00:00+00:00","target":20,"active":8,"running":12,"eta_seconds":150,
  "reservations":[{"requested_by":"client-1","instances":20,"expires_at":"2026-10-04T13:00:00+00:00"}],
- "load":{"ingress_bytes_per_second":2147483648,"avg_put_slot_util":0.31,"max_put_slot_util":0.52},
+ "load":{"ingress_bytes_per_second":1073741824,"avg_put_slot_util":0.31,"max_put_slot_util":0.52},
  "limits":{"min_instances":3,"max_instances":20,"max_minutes":120},
- "throughput":{"gib_per_second_per_instance":15,"min_gib_per_second":45,"max_gib_per_second":300,"active_gib_per_second":120},
+ "throughput":{"gib_per_second_per_instance":0.75,"min_gib_per_second":2.25,"max_gib_per_second":15,"active_gib_per_second":6},
  "token":"client-1","can_reserve":true}
 ```
 
