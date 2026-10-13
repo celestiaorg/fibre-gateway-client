@@ -305,6 +305,43 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+  /v1/capacity/load:
+    get:
+      operationId: readCapacityLoad
+      tags: [capacity]
+      summary: Read fleet put load history
+      description: >-
+        Fleet-wide put load over the last minutes, from the gateway's metrics.
+        Any accepted token may read it.
+      parameters:
+        - name: minutes
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 360, default: 60 }
+      responses:
+        '200':
+          description: The load history.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CapacityLoad' }
+        '400':
+          description: invalid_request. minutes out of range.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: unauthorized. Token missing, wrong, retired, or more than one Authorization header.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: unavailable when the instance is shutting down. capacity_unavailable when the capacity service did not answer.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 components:
   securitySchemes:
     bearer:
@@ -384,7 +421,7 @@ components:
       properties:
         instances:
           type: integer
-          minimum: 3
+          minimum: 2
           maximum: 20
           description: Number of instances to reserve.
         gib_per_second:
@@ -392,7 +429,7 @@ components:
           exclusiveMinimum: 0
           description: >-
             Put throughput to reserve, in GiB/s. The gateway rounds up to whole
-            instances at throughput.gib_per_second_per_instance (at least 3) and
+            instances at throughput.gib_per_second_per_instance (at least 2) and
             rejects more than throughput.max_gib_per_second. Only when the status
             has a throughput field.
         minutes:
@@ -471,6 +508,26 @@ components:
         can_reserve:
           type: boolean
           description: Whether this token may reserve or release capacity.
+    CapacityLoad:
+      type: object
+      additionalProperties: false
+      required: [step_seconds, series]
+      properties:
+        step_seconds:
+          type: integer
+          description: Spacing of the samples.
+        series:
+          type: object
+          description: >-
+            [unix_seconds, value] pairs per series: ingress_bytes_per_second,
+            puts_per_second, put_slots_in_use, put_slots_limit, instances_up.
+          additionalProperties:
+            type: array
+            items:
+              type: array
+              minItems: 2
+              maxItems: 2
+              items: { type: number }
     Error:
       type: object
       additionalProperties: false

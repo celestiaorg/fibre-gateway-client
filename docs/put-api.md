@@ -10,7 +10,7 @@ For what we promise, read the [service contract](contract.md).
 | Item | Value |
 |---|---|
 | Base URL | `https://cf.celestia-corto.com:8443` |
-| Endpoints | `POST /v1/put`, `POST /v1/get`, `POST`, `GET` and `DELETE /v1/capacity`. Any other path or method returns `404 not_found` |
+| Endpoints | `POST /v1/put`, `POST /v1/get`, `POST`, `GET` and `DELETE /v1/capacity`, `GET /v1/capacity/load`. Any other path or method returns `404 not_found` |
 | Auth | Exactly one header, `Authorization: Bearer <token>` (see [Tokens](client-guide.md#tokens)) |
 | Transport | HTTPS only, TLS 1.2 or newer. Plain HTTP gets a plain-text `400` |
 | Errors | JSON `{"error":"<code>"}` with `Content-Type: application/json` (see [Errors](#errors)) |
@@ -95,20 +95,21 @@ The same is available as a web page at `https://cf.celestia-corto.com:8443/ui`. 
 
 | Request | Body | Response |
 |---|---|---|
-| `POST /v1/capacity` | `{"instances":<3–20>,"minutes":<1–120>}` or `{"gib_per_second":<GiB/s>,"minutes":<1–120>}`, `Content-Type: application/json`, at most 1 KiB. Unknown fields are rejected | `200` with the status below |
+| `POST /v1/capacity` | `{"instances":<2–20>,"minutes":<1–120>}` or `{"gib_per_second":<GiB/s>,"minutes":<1–120>}`, `Content-Type: application/json`, at most 1 KiB. Unknown fields are rejected | `200` with the status below |
 | `GET /v1/capacity` | None. Any token | `200` with the status below |
 | `DELETE /v1/capacity` | None | `200` with the status below. Drops this token's reservation |
+| `GET /v1/capacity/load?minutes=<1–360>` | None. Any token | `200` `{"step_seconds", "series": {"ingress_bytes_per_second", "puts_per_second", "put_slots_in_use", "put_slots_limit", "instances_up"}}`, each a list of `[unix_seconds, value]`. Default 60 minutes |
 
 Each token holds one reservation, and reserving again replaces it. The fleet keeps at least the largest active
 reservation (`floor`) and may scale above it with load. `gib_per_second` is rounded up to whole instances at
-`throughput.gib_per_second_per_instance`, with at least 3, and anything above `throughput.max_gib_per_second` is rejected.
+`throughput.gib_per_second_per_instance`, with at least 2, and anything above `throughput.max_gib_per_second` is rejected.
 
 ```json
 {"floor":20,"expires_at":"2026-10-04T13:00:00+00:00","target":20,"active":8,"running":12,"eta_seconds":150,
  "reservations":[{"requested_by":"client-1","instances":20,"expires_at":"2026-10-04T13:00:00+00:00"}],
  "load":{"ingress_bytes_per_second":1073741824,"avg_put_slot_util":0.31,"max_put_slot_util":0.52},
- "limits":{"min_instances":3,"max_instances":20,"max_minutes":120},
- "throughput":{"gib_per_second_per_instance":0.75,"min_gib_per_second":2.25,"max_gib_per_second":15,"active_gib_per_second":6},
+ "limits":{"min_instances":2,"max_instances":20,"max_minutes":120},
+ "throughput":{"gib_per_second_per_instance":0.75,"min_gib_per_second":1.5,"max_gib_per_second":15,"active_gib_per_second":6},
  "token":"client-1","can_reserve":true}
 ```
 
