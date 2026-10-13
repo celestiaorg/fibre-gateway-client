@@ -26,6 +26,14 @@ let back = client.get(&receipt.blob_id).await?;
 ```
 
 - Feature `http` adds the async `Client` (put, get, capacity). It requires a Tokio runtime and uses rustls with built-in root certificates.
+- The `Client` spreads load across the gateway's instances, so concurrency above one instance's slot limit reaches the whole fleet. By default it uses HTTP/1.1 with a rotating resolver (one connection per in-flight request, each landing on a different instance). For HTTP/2, build it with `Protocol::Http2`, which keeps one connection per instance and sends each request to the least-busy one:
+
+  ```rust
+  use fibre_gateway_client::{Client, Options, Protocol};
+  let client = Client::with_options(url, token, Options { protocol: Protocol::Http2, ..Default::default() });
+  ```
+
+  HTTP/1.1 is the default: it uploads large blobs a little faster, because HTTP/2's server-controlled flow-control window throttles a single connection's upload.
 - Without it you get the receipt types and `verify`, for use with your own HTTP stack.
   Call `verify(&data, &put.receipt, &put.commitment_proof)` after every put.
 
