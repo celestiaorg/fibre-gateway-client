@@ -208,6 +208,9 @@ impl Client {
                 .connect_timeout(timeouts.connect)
                 .retry(reqwest::retry::never())
                 .dns_resolver(Arc::new(RotatingResolver::default()))
+                // HTTP/2 would multiplex every request over one connection, so one
+                // instance, even if a dependency enables reqwest's http2 feature.
+                .http1_only()
                 .build()
                 .expect("failed to build HTTP client"),
             put_url: Url::parse(&format!("{base_url}/v1/put")).expect("invalid gateway URL"),
