@@ -42,8 +42,12 @@ To minimize costs, the gateway scales down after inactivity. Before running a lo
 
 | Endpoint | Meaning |
 |---|---|
-| `POST /v1/capacity` with `{"instances":20,"minutes":60}` | Keep at least `instances` (3–20) up for `minutes` (1–120) |
-| `GET /v1/capacity` | Current reservation and fleet size |
+| `POST /v1/capacity` with `{"gib_per_second":120,"minutes":60}` or `{"instances":20,"minutes":60}` | Keep at least that throughput or `instances` (3–20) up for `minutes` (1–120) |
+| `GET /v1/capacity` | Current reservations, fleet size and load |
+| `DELETE /v1/capacity` | Release your reservation early |
+
+Or use the web page at `https://cf.celestia-corto.com:8443/ui`: enter GiB/s and minutes, and it tells you when the
+capacity is serving.
 
 
 ### Curl (Put and Get without Verification)
