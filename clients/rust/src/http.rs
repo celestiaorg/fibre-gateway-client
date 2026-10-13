@@ -41,11 +41,15 @@ pub struct CapacityStatus {
 pub struct ApiError {
     /// HTTP status code.
     pub status: u16,
-    /// Stable error code from the body, like `capacity` or `invalid_length`.
+    /// Stable error code from the gateway's JSON body, like `capacity` or
+    /// `invalid_length`. `None` when the body is not the gateway's JSON, e.g. an
+    /// error page from a proxy or load balancer in front of it.
     pub code: Option<String>,
-    /// Human-readable hint from the body, if the gateway sent one.
+    /// Human-readable hint from the gateway. `None` when there is no gateway JSON
+    /// body or the gateway gives no hint for this error, which is most of them.
     pub message: Option<String>,
-    /// Wait this long before retrying, from the `Retry-After` header.
+    /// Wait this long before retrying, from the `Retry-After` header; `None`
+    /// when the header is absent.
     pub retry_after: Option<Duration>,
 }
 
@@ -102,7 +106,8 @@ async fn check(mut res: Response) -> Result<Response, HttpError> {
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.trim().parse().ok())
         .map(Duration::from_secs);
-    #[derive(Deserialize)]
+    /// A body that is not the gateway's JSON parses as empty.
+    #[derive(Default, Deserialize)]
     struct Body {
         error: Option<String>,
         message: Option<String>,
@@ -114,12 +119,11 @@ async fn check(mut res: Response) -> Result<Response, HttpError> {
         };
         bytes.extend_from_slice(&chunk[..chunk.len().min(MAX_ERROR_BODY - bytes.len())]);
     }
-    let body: Option<Body> = serde_json::from_slice(&bytes).ok();
-    let (code, message) = body.map_or((None, None), |b| (b.error, b.message));
+    let body: Body = serde_json::from_slice(&bytes).unwrap_or_default();
     Err(HttpError::Status(ApiError {
         status: status.as_u16(),
-        code,
-        message,
+        code: body.error,
+        message: body.message,
         retry_after,
     }))
 }
