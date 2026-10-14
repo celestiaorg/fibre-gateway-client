@@ -181,8 +181,11 @@ paths:
       tags: [capacity]
       summary: Reserve gateway instances
       description: >-
-        Reserves gateway instances before a large job. The token must be allowed
-        to reserve capacity. Returns the current capacity status.
+        Reserves gateway instances before a large job, by instance count or by
+        throughput in GiB/s. Each token holds one reservation; reserving again
+        replaces it. The fleet keeps at least the largest active reservation.
+        The token must be allowed to reserve capacity. Returns the current
+        capacity status.
       requestBody:
         required: true
         content:
@@ -198,7 +201,9 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/CapacityStatus' }
         '400':
-          description: invalid_request. Malformed JSON, an unknown field, or instances or minutes out of range.
+          description: >-
+            invalid_request. Malformed JSON, an unknown field, both or neither of
+            instances and gib_per_second, or a value out of range.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -228,7 +233,44 @@ paths:
       summary: Read capacity status
       description: >-
         Returns the current capacity status without changing the reservation.
-        The token must be allowed to reserve capacity.
+        Any accepted token may read it.
+      responses:
+        '200':
+          description: The capacity status.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CapacityStatus' }
+        '400':
+          description: invalid_request. The capacity service rejected the request.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: unauthorized. Token missing, wrong, retired, or more than one Authorization header.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: rate_limited. The reservation changed too recently. Retry later.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: unavailable when the instance is shutting down. capacity_unavailable when the capacity service did not answer.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      operationId: releaseCapacity
+      tags: [capacity]
+      summary: Release this token's reservation
+      description: >-
+        Drops the reservation held by this token, if any; other tokens'
+        reservations stay. Instances scale in with load afterwards. The token
+        must be allowed to reserve capacity. Returns the current capacity status.
       responses:
         '200':
           description: The capacity status.
@@ -254,7 +296,44 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '429':
-          description: rate_limited. The reservation changed too recently. Retry later.
+          description: rate_limited. The capacity service refused the change. Retry later.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: unavailable when the instance is shutting down. capacity_unavailable when the capacity service did not answer.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /v1/capacity/load:
+    get:
+      operationId: readCapacityLoad
+      tags: [capacity]
+      summary: Read fleet put load history
+      description: >-
+        Fleet-wide put load over the last minutes, from the gateway's metrics.
+        Any accepted token may read it.
+      parameters:
+        - name: minutes
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 360, default: 60 }
+      responses:
+        '200':
+          description: The load history.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CapacityLoad' }
+        '400':
+          description: invalid_request. minutes out of range.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: unauthorized. Token missing, wrong, retired, or more than one Authorization header.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -334,13 +413,25 @@ components:
     CapacityRequest:
       type: object
       additionalProperties: false
-      required: [instances, minutes]
+      description: Exactly one of instances and gib_per_second, plus minutes.
+      required: [minutes]
+      oneOf:
+        - required: [instances]
+        - required: [gib_per_second]
       properties:
         instances:
           type: integer
-          minimum: 3
+          minimum: 2
           maximum: 20
           description: Number of instances to reserve.
+        gib_per_second:
+          type: number
+          exclusiveMinimum: 0
+          description: >-
+            Put throughput to reserve, in GiB/s. The gateway rounds up to whole
+            instances at throughput.gib_per_second_per_instance (at least 2) and
+            rejects more than throughput.max_gib_per_second. Only when the status
+            has a throughput field.
         minutes:
           type: integer
           minimum: 1
@@ -369,6 +460,74 @@ components:
         eta_seconds:
           type: [integer, 'null']
           description: Estimated seconds until the target is met.
+        reservations:
+          type: array
+          description: Active reservations, largest first. The floor is the largest.
+          items:
+            type: object
+            additionalProperties: false
+            required: [requested_by, instances, expires_at]
+            properties:
+              requested_by: { type: string, description: Name of the token that holds it. }
+              instances: { type: integer }
+              expires_at: { type: string, description: RFC 3339. }
+        load:
+          type: object
+          additionalProperties: false
+          description: Fleet load over the instances serving traffic.
+          properties:
+            ingress_bytes_per_second:
+              type: [number, 'null']
+              description: Put request bytes per second, 1 minute rate.
+            avg_put_slot_util:
+              type: [number, 'null']
+              description: Mean fraction of put slots in use.
+            max_put_slot_util:
+              type: [number, 'null']
+              description: Highest fraction of put slots in use on one instance.
+        limits:
+          type: object
+          additionalProperties: false
+          properties:
+            min_instances: { type: integer, description: Always-on instances. }
+            max_instances: { type: integer }
+            max_minutes: { type: integer }
+        throughput:
+          type: object
+          additionalProperties: false
+          description: Throughput planning figures; absent when the gateway has none configured.
+          required: [gib_per_second_per_instance, min_gib_per_second, max_gib_per_second, active_gib_per_second]
+          properties:
+            gib_per_second_per_instance: { type: number }
+            min_gib_per_second: { type: number, description: Always-on throughput. }
+            max_gib_per_second: { type: number, description: The most that can be reserved. }
+            active_gib_per_second: { type: number, description: Throughput of the instances serving now. }
+        token:
+          type: string
+          description: Name of the token that made this request.
+        can_reserve:
+          type: boolean
+          description: Whether this token may reserve or release capacity.
+    CapacityLoad:
+      type: object
+      additionalProperties: false
+      required: [step_seconds, series]
+      properties:
+        step_seconds:
+          type: integer
+          description: Spacing of the samples.
+        series:
+          type: object
+          description: >-
+            [unix_seconds, value] pairs per series: ingress_bytes_per_second,
+            puts_per_second, put_slots_in_use, put_slots_limit, instances_up.
+          additionalProperties:
+            type: array
+            items:
+              type: array
+              minItems: 2
+              maxItems: 2
+              items: { type: number }
     Error:
       type: object
       additionalProperties: false
