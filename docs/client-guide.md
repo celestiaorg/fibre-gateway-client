@@ -163,6 +163,7 @@ Support: `<support contact>`.
 | Item | Value |
 |---|---|
 | Endpoint | `https://cf.celestia-corto.com:8443`. Port 8443 only |
+| Private endpoint | `https://private.cf.celestia-corto.com:8443`: the same instances on their private IPs. Only for clients in the gateway's VPC or a peered VPC, in the same Availability Zone as the gateway (match by AZ ID, not AZ name; ask the operators). Same-AZ traffic is free of AWS data-transfer charges. From anywhere else it does not connect |
 | DNS | The name round-robins over the instances serving traffic |
 | TLS | TLS 1.2 or newer. Public Let's Encrypt certificate for `cf.celestia-corto.com` and `*.cf.celestia-corto.com`|
 | Chain | `corto-10` |
