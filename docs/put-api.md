@@ -115,7 +115,7 @@ Reserves gateway instances before a large job. When to use it: [Capacity](client
 | 403 | `forbidden` | capacity | This token may not reserve capacity |
 | 404 | `not_found` | get | Blob not found. Older than 24 h, or the `blob_id` is wrong |
 | 404 | `not_found` | all | Unknown path, or a method other than `POST` (or `GET` on capacity) |
-| 413 | `invalid_length` | put | `Content-Length` missing or outside the size range |
+| 413 | `invalid_length` | put | `Content-Length` missing or outside the size range. `message` says the actual size and the allowed range |
 | 429 | `capacity` | put, get | All slots for this endpoint on this instance are busy. Not queued |
 | 429 | `priority_only` | put, get | The instance is reserving capacity for priority traffic and refused this token. Honor the `Retry-After` header, then retry |
 | 429 | `rate_limited` | capacity | The reservation changed less than 10 s ago. Retry later |
