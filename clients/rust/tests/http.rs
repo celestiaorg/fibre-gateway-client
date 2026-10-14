@@ -7,7 +7,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
-use fibre_gateway_client::{CapacityStatus, Client, HttpError, Timeouts, VerifyError};
+use fibre_gateway_client::{ApiError, CapacityStatus, Client, HttpError, Timeouts, VerifyError};
 
 /// A request's target and body.
 type Seen = Vec<(String, Vec<u8>)>;
@@ -231,11 +231,100 @@ async fn http_errors_expose_status() {
         ];
         for err in errors {
             assert!(
-                matches!(&err, HttpError::Request(e) if e.status().map(|s| s.as_u16()) == Some(code)),
+                matches!(&err, HttpError::Status(e) if e.status == code && e.code.as_deref() == Some("failed")),
                 "{err}"
             );
         }
         assert_eq!(server.join().unwrap().len(), 4);
+    }
+}
+
+#[tokio::test]
+async fn http_errors_keep_code_message_and_retry_after() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let server = thread::spawn(move || {
+        let body = r#"{"error":"priority_only","message":"busy"}"#;
+        let (mut stream, _) = listener.accept().unwrap();
+        read_request(&stream);
+        write!(
+            stream,
+            "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 60\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        )
+        .unwrap();
+    });
+    let err = Client::new(url, "token")
+        .put(Bytes::from_static(b"data"))
+        .await
+        .unwrap_err();
+    server.join().unwrap();
+    assert_eq!(err.status(), Some(429));
+    let HttpError::Status(e) = &err else {
+        panic!("{err}")
+    };
+    assert_eq!(
+        e,
+        &ApiError {
+            status: 429,
+            code: Some("priority_only".into()),
+            message: Some("busy".into()),
+            retry_after: Some(Duration::from_secs(60)),
+        }
+    );
+    assert_eq!(
+        err.to_string(),
+        "gateway returned 429 priority_only: busy (retry after 60 s)"
+    );
+}
+
+#[tokio::test]
+async fn redirects_are_not_followed() {
+    let (url, server) = serve_status("307 Temporary Redirect", vec![String::new()]);
+    let err = Client::new(url, "token")
+        .put(Bytes::from_static(b"data"))
+        .await
+        .unwrap_err();
+    assert_eq!(err.status(), Some(307));
+    assert_eq!(server.join().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn huge_error_bodies_are_not_buffered() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        read_request(&stream);
+        let body = "x".repeat(64 << 20);
+        // The client stops reading and closes the connection, so this write fails.
+        let _ = write!(
+            stream,
+            "HTTP/1.1 502 Bad Gateway\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        );
+    });
+    let err = Client::new(url, "token").get("00").await.unwrap_err();
+    let HttpError::Status(e) = &err else {
+        panic!("{err}")
+    };
+    assert_eq!((e.status, e.code.as_deref()), (502, None));
+    tokio::task::spawn_blocking(move || server.join().unwrap())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn host_names_resolve_through_the_rotating_resolver() {
+    // localhost may resolve to ::1 and 127.0.0.1; rotation must still fall back to the one listening.
+    for _ in 0..3 {
+        let (url, server) = serve(vec![
+            r#"{"floor":0,"expires_at":null,"target":3,"active":3,"running":3,"eta_seconds":0}"#
+                .into(),
+        ]);
+        let url = url.replace("127.0.0.1", "localhost");
+        Client::new(url, "token").capacity_status().await.unwrap();
+        server.join().unwrap();
     }
 }
 

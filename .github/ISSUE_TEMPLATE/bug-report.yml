@@ -1,0 +1,45 @@
+name: Bug Report
+description: Create a report to help us squash bugs!
+title: "<title>"
+labels: ["bug"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not report security vulnerabilities here. Report them
+        privately through GitHub's "Report a vulnerability" button on the
+        Security tab instead.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary of Bug
+      description: Concisely describe the issue.
+    validations:
+      required: true
+
+  - type: textarea
+    id: version
+    attributes:
+      label: Version
+      description: git commit hash or release version
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to Reproduce
+      description: >
+        What commands or requests in order should someone run to reproduce
+        your problem?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Paste any relevant logs. This is formatted as code automatically.
+      render: shell

@@ -553,3 +553,8 @@ components:
             - unavailable
             - capacity_unavailable
             - timeout
+        message:
+          type: string
+          description: >-
+            Optional human-readable hint, e.g. how far a blob is outside the
+            size range. Not stable; match on `error`.
