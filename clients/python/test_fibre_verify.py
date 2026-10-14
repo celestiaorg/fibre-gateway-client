@@ -1,6 +1,6 @@
 """Runs fibre_verify against clients/testdata/commitment_vectors.json.
 
-    python3 -m unittest
+python3 -m unittest
 """
 
 import hashlib
@@ -10,7 +10,11 @@ import unittest
 
 from fibre_verify import VerifyError, commitment_roots, row_size, verify
 
-VECTORS = pathlib.Path(__file__).resolve().parent.parent / "testdata" / "commitment_vectors.json"
+VECTORS = (
+    pathlib.Path(__file__).resolve().parent.parent
+    / "testdata"
+    / "commitment_vectors.json"
+)
 
 
 def vector_data(size):
@@ -19,7 +23,10 @@ def vector_data(size):
     block = min(size, 1 << 20)
     ones = int.from_bytes((b"\x01" + bytes(7)) * block, "little")
     lane_mask = ones * mask32
-    lanes = int.from_bytes(b"".join(((i * a) & mask32).to_bytes(8, "little") for i in range(block)), "little")
+    lanes = int.from_bytes(
+        b"".join(((i * a) & mask32).to_bytes(8, "little") for i in range(block)),
+        "little",
+    )
     step = ones * ((block * a) & mask32)
     out = bytearray()
     while len(out) < size:
