@@ -2,7 +2,7 @@
 
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
@@ -79,7 +79,7 @@ pub enum HttpError {
     Status(ApiError),
     /// Resolving the gateway name to instance addresses failed (HTTP/2 only).
     #[error("resolving the gateway failed: {0}")]
-    Resolve(#[from] std::io::Error),
+    Resolve(std::io::Error),
     #[error(transparent)]
     Verify(#[from] VerifyError),
     #[error("verification task failed: {0}")]
@@ -259,11 +259,27 @@ struct Pool {
     port: u16,
     headers: HeaderMap,
     connect_timeout: Duration,
-    /// When the list was last resolved, or tried to be.
-    last_refresh: Mutex<Option<Instant>>,
-    instances: RwLock<Vec<Arc<Instance>>>,
+    state: Mutex<State>,
     /// Round-robin position.
     next: AtomicUsize,
+}
+
+/// The instance list and when it was resolved, behind one lock so checking for
+/// staleness and claiming the refresh is a single step.
+#[derive(Default)]
+struct State {
+    instances: Vec<Arc<Instance>>,
+    /// When the list was last resolved, or tried to be.
+    refreshed_at: Option<Instant>,
+}
+
+impl State {
+    fn fresh(&self) -> bool {
+        !self.instances.is_empty()
+            && self
+                .refreshed_at
+                .is_some_and(|at| at.elapsed() < REFRESH_EVERY)
+    }
 }
 
 impl Pool {
@@ -273,8 +289,7 @@ impl Pool {
             port,
             headers,
             connect_timeout,
-            last_refresh: Mutex::new(None),
-            instances: RwLock::new(Vec::new()),
+            state: Mutex::new(State::default()),
             next: AtomicUsize::new(0),
         }
     }
@@ -303,23 +318,18 @@ impl Pool {
         })
     }
 
-    fn snapshot(&self) -> Vec<Arc<Instance>> {
-        self.instances.read().unwrap().clone()
-    }
-
-    fn stale(&self) -> bool {
-        self.last_refresh
-            .lock()
-            .unwrap()
-            .is_none_or(|at| at.elapsed() >= REFRESH_EVERY)
-    }
-
     async fn resolve(&self) -> Result<Vec<SocketAddr>, HttpError> {
         let lookup = tokio::net::lookup_host((self.hostname.as_str(), self.port));
         // The system resolver has no deadline of its own.
         let addrs: Vec<SocketAddr> = tokio::time::timeout(self.connect_timeout, lookup)
             .await
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "resolving timed out"))??
+            .unwrap_or_else(|_| {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "resolving timed out",
+                ))
+            })
+            .map_err(HttpError::Resolve)?
             .collect();
         if addrs.is_empty() {
             return Err(HttpError::Resolve(std::io::Error::new(
@@ -330,51 +340,71 @@ impl Pool {
         Ok(addrs)
     }
 
-    /// Current instances, re-resolved when stale. A failed refresh keeps a
-    /// non-empty list, so only an empty one fails with the lookup error.
-    async fn ready(&self) -> Result<Vec<Arc<Instance>>, HttpError> {
-        let list = self.snapshot();
-        if !list.is_empty() && !self.stale() {
-            return Ok(list);
+    /// The next instance to use (see [`select`]), re-resolving the fleet first
+    /// when the list is stale or empty. Only the caller that finds the list stale
+    /// refreshes it; the others keep using the current list meanwhile. A failed
+    /// refresh keeps a non-empty list, so only an empty one fails with the lookup
+    /// error.
+    async fn pick(&self, exclude: &[SocketAddr]) -> Result<Option<Arc<Instance>>, HttpError> {
+        {
+            let mut state = self.state.lock().unwrap();
+            if state.fresh() {
+                return Ok(self.select(&state.instances, exclude));
+            }
+            // Claim the refresh: concurrent callers keep using the current list,
+            // and a failing resolver is not hit on every request.
+            state.refreshed_at = Some(Instant::now());
         }
-        // Mark the attempt first: concurrent callers keep using the current list,
-        // and a failing resolver is not hit on every request.
-        *self.last_refresh.lock().unwrap() = Some(Instant::now());
-        match self.resolve().await {
-            Ok(addrs) => Ok(self.install(&list, &addrs)),
-            Err(_) if !list.is_empty() => Ok(list),
-            Err(e) => Err(e),
+        let resolved = self.resolve().await;
+        let mut state = self.state.lock().unwrap();
+        match resolved {
+            Ok(addrs) => {
+                // Reconcile against the list as it is now, not as it was before
+                // the lookup, so a concurrent refresh never duplicates instances.
+                let fresh = reconcile(&state.instances, &addrs, |a| self.make_instance(a));
+                state.instances = fresh;
+            }
+            Err(e) if state.instances.is_empty() => return Err(e),
+            Err(_) => {}
         }
+        Ok(self.select(&state.instances, exclude))
     }
 
-    fn install(&self, list: &[Arc<Instance>], addrs: &[SocketAddr]) -> Vec<Arc<Instance>> {
-        let fresh = reconcile(list, addrs, |addr| self.make_instance(addr));
-        *self.instances.write().unwrap() = fresh.clone();
-        fresh
+    fn select(&self, instances: &[Arc<Instance>], exclude: &[SocketAddr]) -> Option<Arc<Instance>> {
+        let start = self.next.fetch_add(1, Ordering::Relaxed);
+        select(instances, start, Instant::now(), exclude)
     }
 
     /// Sends the `build`-ed request to the next instance, retrying on a different
     /// one when it fails to connect (a connect error means no bytes were sent, so
-    /// this never replays a put body to a server that saw it).
+    /// this never replays a put body to a server that saw it). When every attempt
+    /// fails to connect, returns the last connect error.
     async fn send(
         &self,
         build: &(dyn Fn(&reqwest::Client) -> reqwest::RequestBuilder + Send + Sync),
     ) -> Result<Response, HttpError> {
         let mut tried: Vec<SocketAddr> = Vec::new();
+        let mut last_err = None;
         loop {
-            let list = self.ready().await?;
-            let start = self.next.fetch_add(1, Ordering::Relaxed);
-            let Some(instance) = select(&list, start, Instant::now(), &tried) else {
-                return Err(HttpError::Resolve(std::io::Error::new(
-                    std::io::ErrorKind::NotConnected,
-                    "no gateway instance could be reached",
-                )));
+            let Some(instance) = self.pick(&tried).await? else {
+                // Every instance was tried and failed to connect.
+                return Err(match last_err {
+                    Some(e) => HttpError::Request(e),
+                    None => HttpError::Resolve(std::io::Error::new(
+                        std::io::ErrorKind::NotConnected,
+                        "no gateway instance to connect to",
+                    )),
+                });
             };
             match build(&instance.agent).send().await {
                 Ok(res) => return Ok(res),
-                Err(e) if e.is_connect() && tried.len() + 1 < MAX_CONNECT_ATTEMPTS => {
+                Err(e) if e.is_connect() => {
                     instance.mark_failed();
                     tried.push(instance.addr);
+                    if tried.len() >= MAX_CONNECT_ATTEMPTS {
+                        return Err(e.into());
+                    }
+                    last_err = Some(e);
                 }
                 Err(e) => return Err(e.into()),
             }
@@ -687,10 +717,33 @@ mod tests {
             assert_eq!(r.await.unwrap().unwrap().active, 3);
         }
         assert_eq!(hits.load(Ordering::Relaxed), 8);
-        let list = pool(&client).snapshot();
+        let list = pool(&client).state.lock().unwrap().instances.clone();
         assert!(list
             .iter()
             .any(|i| i.addr.ip().is_loopback() && i.addr.is_ipv4()));
+        // The first requests all found the list empty and resolved; each reconciled
+        // against the list as it was then, so no address got two instances.
+        let mut addrs: Vec<_> = list.iter().map(|i| i.addr).collect();
+        addrs.sort();
+        addrs.dedup();
+        assert_eq!(addrs.len(), list.len());
+    }
+
+    #[tokio::test]
+    async fn http2_pool_returns_the_connect_error_when_every_instance_fails() {
+        // A port nothing listens on, on a name with a single address: one instance.
+        let port = {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            listener.local_addr().unwrap().port()
+        };
+        let client = http2_client(format!("http://127.0.0.1:{port}"));
+        match client.capacity_status().await {
+            Err(HttpError::Request(e)) => assert!(e.is_connect(), "{e}"),
+            other => panic!("expected the connect error, got {other:?}"),
+        }
+        let list = pool(&client).state.lock().unwrap().instances.clone();
+        assert_eq!(list.len(), 1);
+        assert!(list[0].cooling(Instant::now()));
     }
 
     #[tokio::test]
@@ -701,13 +754,14 @@ mod tests {
             HeaderMap::new(),
             Duration::from_secs(2),
         );
-        *pool.instances.write().unwrap() = vec![instance(1)];
-        assert!(pool.stale());
-        let list = pool.ready().await.unwrap();
-        assert_eq!(list.len(), 1);
-        assert_eq!(list[0].addr, addr(1));
+        pool.state.lock().unwrap().instances = vec![instance(1)];
+        assert!(!pool.state.lock().unwrap().fresh());
+        let picked = pool.pick(&[]).await.unwrap().unwrap();
+        assert_eq!(picked.addr, addr(1));
+        let state = pool.state.lock().unwrap();
+        assert_eq!(state.instances.len(), 1);
         assert!(
-            !pool.stale(),
+            state.fresh(),
             "the failed attempt counts, so it is not retried at once"
         );
     }
