@@ -20,11 +20,9 @@ What we promise is in the [service contract](contract.md).
 
 ## Quick start
 
-
 This gateway provides easy access to a Celestia Fibre deployment. The gateway accepts a raw payload, Reed-Solomon encodes it, and sends the resulting `blob` to Celestia for storage.
 On success, the gatway returns a `blob_id` - a binding commitment to the posted data. Before accepting, clients should verify that the returned commitment matches their payload
 using the provided library (see Rust example below).
-
 
 | Item | Value |
 |---|---|
@@ -36,15 +34,19 @@ using the provided library (see Rust example below).
 Note: The −5 reserves space for Fibre's 5-byte blob header. The gateway adds this header for you; send only your data.
 Send the token using an authroization header (`Authorization: Bearer <token>`) on every request.
 
-**Scaling**
+### Scaling
 
-To minimize costs, the gateway scales down after inactivity. Before running a load test, we recommend scaling it up manually to ensure that capacity is available. 
+To minimize costs, the gateway scales down after inactivity. Before running a load test, we recommend scaling it up manually to ensure that capacity is available.
 
 | Endpoint | Meaning |
 |---|---|
-| `POST /v1/capacity` with `{"instances":20,"minutes":60}` | Keep at least `instances` (3–20) up for `minutes` (1–120) |
-| `GET /v1/capacity` | Current reservation and fleet size |
+| `POST /v1/capacity` with `{"gib_per_second":10,"minutes":60}` or `{"instances":20,"minutes":60}` | Keep at least that throughput or `instances` (2–20) up for `minutes` (1–120) |
+| `GET /v1/capacity` | Current reservations, fleet size and load |
+| `DELETE /v1/capacity` | Release your reservation early |
+| `GET /v1/capacity/load?minutes=60` | Fleet put load history (what the page plots) |
 
+Or use the web page at `https://cf.celestia-corto.com:8443/ui`: enter GiB/s and minutes, and it tells you when the
+capacity is serving.
 
 ### Curl (Put and Get without Verification)
 
@@ -161,6 +163,7 @@ Support: `<support contact>`.
 | Item | Value |
 |---|---|
 | Endpoint | `https://cf.celestia-corto.com:8443`. Port 8443 only |
+| Private endpoint | `https://private.cf.celestia-corto.com:8443`: the same instances on their private IPs. Only for clients in the gateway's VPC or a peered VPC, in the gateway's Availability Zone, AZ ID `euc1-az2` (match the ID, not the AZ name: names differ per account). Same-AZ traffic is free of AWS data-transfer charges. From anywhere else it does not connect |
 | DNS | The name round-robins over the instances serving traffic |
 | TLS | TLS 1.2 or newer. Public Let's Encrypt certificate for `cf.celestia-corto.com` and `*.cf.celestia-corto.com`|
 | Chain | `corto-10` |
@@ -219,7 +222,7 @@ Before a large job, reserve a minimum number of instances for a while:
 
 | Request | Meaning |
 |---|---|
-| `POST /v1/capacity` with `{"instances":20,"minutes":60}` | Keep at least `instances` (3–20) up for `minutes` (1–120) |
+| `POST /v1/capacity` with `{"instances":20,"minutes":60}` | Keep at least `instances` (2–20) up for `minutes` (1–120) |
 | `GET /v1/capacity` | Current reservation and fleet size |
 
 Both return:
@@ -307,7 +310,7 @@ Each check fails if the gateway committed to bytes other than yours. After it pa
 Reads need no check on your side: the gateway checks every piece it downloads against `blob_id`.
 
 Checking the chain is optional, see below. To write your own verifier, see
-[How verification works](#how-verification-works).
+the reference verifier in [`clients/python/fibre_verify.py`](../clients/python/fibre_verify.py).
 
 ### On-chain check (optional)
 

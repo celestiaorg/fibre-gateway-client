@@ -1,0 +1,38 @@
+version: 2
+
+# Same shape as celestia-app: one weekly Monday PR per ecosystem grouping minor
+# and patch bumps, with major bumps left ungrouped so a breaking change gets its
+# own PR. The Go module has no dependencies and the Python client is stdlib
+# only, so only Actions and Cargo are tracked.
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    labels:
+      - dependencies
+
+  - package-ecosystem: cargo
+    directory: "/clients/rust"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      cargo-deps:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    labels:
+      - dependencies

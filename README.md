@@ -1,12 +1,13 @@
 # fibre-gateway-client
 
-This library provides a client library for a Celestia Fibre gateway. 
+This library provides a client library for a Celestia Fibre gateway.
 
-A Fibre gateway provides easy access to a Celestia Fibre deployment by interfacing with validators on the client's behalf. 
+A Fibre gateway provides easy access to a Celestia Fibre deployment by interfacing with validators on the client's behalf.
 The gateway accepts a raw payload, Reed-Solomon encodes it, and sends the resulting `blob` to Celestia for storage.
 On success, the gatway returns a `blob_id` - a binding commitment to the posted data.
 
-## Quick Start (Rust) 
+## Quick Start (Rust)
+
 Taken from [clients/rust/examples/quickstart.rs](../clients/rust/examples/quickstart.rs):
 
 ```toml
@@ -49,11 +50,10 @@ Run it from `clients/rust`:
 TOKEN=<your token> cargo run --release --features http --example quickstart -- blob.bin
 ```
 
-## Available Methods 
+## Available Methods
 
 - **Put** sends one blob (32–128 MiB) to Celestia on your behalf and returns once it is available, with its `blob_id`.
 - **Get** returns the blob by its `blob_id` for 24 h after the put.
-
 
 ## Docs
 
