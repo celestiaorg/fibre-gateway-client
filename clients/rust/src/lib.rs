@@ -10,7 +10,7 @@
 mod http;
 
 #[cfg(feature = "http")]
-pub use http::{ApiError, CapacityStatus, Client, HttpError, Timeouts};
+pub use http::{ApiError, CapacityStatus, Client, HttpError, Options, Protocol, Timeouts};
 
 use rsema1d::codec::compute_rlc;
 use rsema1d::crypto::{derive_coefficients, hash_internal, hash_leaf, MerkleTree};
