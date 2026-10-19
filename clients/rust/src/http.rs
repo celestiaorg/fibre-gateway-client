@@ -596,7 +596,7 @@ impl Client {
         Ok(data)
     }
 
-    /// Reserves at least `instances` gateway instances (3..=20) for `minutes` (1..=120).
+    /// Reserves at least `instances` gateway instances (3..=20) for `minutes` (1..=1440, i.e. up to 24 h).
     /// The token must be allowed to reserve capacity.
     pub async fn capacity(
         &self,
