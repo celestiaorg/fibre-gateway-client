@@ -177,7 +177,7 @@ HTTP client settings:
   A connection stays on the instance it first reached, and a single HTTP/2 connection carries every request to one instance.
   Use HTTP/1.1 with one connection per request in flight, and connect each one to a different address from the DNS answer:
   system resolvers usually return the addresses in the same order, and most HTTP libraries connect to the first one, so every connection lands on the same instance.
-  The Rust crate's `Client` does this for you.
+  The Rust crate's `Client` does this for you. It can also spread HTTP/2 traffic by keeping one connection per instance and sending requests to them in turn (`Protocol::Http2`), but HTTP/1.1 stays the default: it uploads large blobs a little faster, because HTTP/2's server-controlled flow-control window throttles a single connection's upload.
 - **No automatic replay.** Never let your HTTP library resend a put body on its own.
   Retry with a new request (see [Errors and retries](#errors-and-retries)).
   The Rust crate's `Client` never replays a `POST`.
