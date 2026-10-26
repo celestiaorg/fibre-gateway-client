@@ -95,7 +95,7 @@ The same is available as a web page at `https://cf.celestia-corto.com:8443/ui`. 
 
 | Request | Body | Response |
 |---|---|---|
-| `POST /v1/capacity` | `{"instances":<2–20>,"minutes":<1–120>}` or `{"gib_per_second":<GiB/s>,"minutes":<1–120>}`, `Content-Type: application/json`, at most 1 KiB. Unknown fields are rejected | `200` with the status below |
+| `POST /v1/capacity` | `{"instances":<2–20>,"minutes":<1–1440>}` or `{"gib_per_second":<GiB/s>,"minutes":<1–1440>}`, `Content-Type: application/json`, at most 1 KiB. Unknown fields are rejected | `200` with the status below |
 | `GET /v1/capacity` | None. Any token | `200` with the status below |
 | `DELETE /v1/capacity` | None | `200` with the status below. Drops this token's reservation |
 | `GET /v1/capacity/load?minutes=<1–360>` | None. Any token | `200` `{"step_seconds", "series": {"ingress_bytes_per_second", "puts_per_second", "put_slots_in_use", "put_slots_limit", "instances_up"}}`, each a list of `[unix_seconds, value]`. Default 60 minutes |

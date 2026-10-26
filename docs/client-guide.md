@@ -40,7 +40,7 @@ To minimize costs, the gateway scales down after inactivity. Before running a lo
 
 | Endpoint | Meaning |
 |---|---|
-| `POST /v1/capacity` with `{"gib_per_second":10,"minutes":60}` or `{"instances":20,"minutes":60}` | Keep at least that throughput or `instances` (2–20) up for `minutes` (1–120) |
+| `POST /v1/capacity` with `{"gib_per_second":10,"minutes":60}` or `{"instances":20,"minutes":60}` | Keep at least that throughput or `instances` (2–20) up for `minutes` (1–1440, i.e. up to 24 h) |
 | `GET /v1/capacity` | Current reservations, fleet size and load |
 | `DELETE /v1/capacity` | Release your reservation early |
 | `GET /v1/capacity/load?minutes=60` | Fleet put load history (what the page plots) |
@@ -222,7 +222,7 @@ Before a large job, reserve a minimum number of instances for a while:
 
 | Request | Meaning |
 |---|---|
-| `POST /v1/capacity` with `{"instances":20,"minutes":60}` | Keep at least `instances` (2–20) up for `minutes` (1–120) |
+| `POST /v1/capacity` with `{"instances":20,"minutes":60}` | Keep at least `instances` (2–20) up for `minutes` (1–1440, i.e. up to 24 h) |
 | `GET /v1/capacity` | Current reservation and fleet size |
 
 Both return:
