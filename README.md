@@ -71,6 +71,18 @@ Client libraries that verify the commitment:
 
 Both are tested against [clients/testdata/commitment_vectors.json](clients/testdata/commitment_vectors.json).
 
+## Contributing
+
+PR titles follow [conventional commits](https://www.conventionalcommits.org/en/v1.0.0/) (see [RELEASING.md](RELEASING.md)) and must start the subject with `[high]`, `[medium]`, or `[low]` to indicate the review thoroughness needed. For example: `fix(rust): [high] reject mismatched commitments` or `docs: [low] clarify setup instructions`. Include the same tag in the PR description and explain why you chose it.
+
+- `[high]`: Deep review for commitment verification, the public HTTP API or OpenAPI contract, published client releases, or other changes with significant risk.
+- `[medium]`: Standard review for code changes with limited impact and well-understood behavior.
+- `[low]`: Focused review for straightforward docs, tests, or tooling changes with low risk.
+
+Choose the higher level when unsure. A small diff can still need deep review. CI checks the title format; reviewers should confirm the chosen level.
+
+Dependabot titles use `[medium]`. Maintainers should confirm the level and add it to the PR description with a brief explanation.
+
 ## License
 
 [Apache 2.0](LICENSE).

@@ -3,7 +3,8 @@ version: 2
 # Same shape as celestia-app: one weekly Monday PR per ecosystem grouping minor
 # and patch bumps, with major bumps left ungrouped so a breaking change gets its
 # own PR. The Go module has no dependencies and the Python client is stdlib
-# only, so only Actions and Cargo are tracked.
+# only, so only Actions and Cargo are tracked. Titles carry the [medium] review
+# level tag required by lint-pull-request.yml.
 updates:
   - package-ecosystem: github-actions
     directory: "/"
@@ -18,6 +19,8 @@ updates:
         update-types:
           - minor
           - patch
+    commit-message:
+      prefix: "chore(deps): [medium] "
     labels:
       - dependencies
 
@@ -34,5 +37,7 @@ updates:
         update-types:
           - minor
           - patch
+    commit-message:
+      prefix: "chore(deps): [medium] "
     labels:
       - dependencies
