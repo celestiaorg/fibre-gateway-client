@@ -194,7 +194,7 @@ Celestia will issue you tokens out-of-band. Reach out via Slack or email if addi
 A put accepts 131,067 through 134,217,723 bytes (128 KiB − 5 through 128 MiB − 5).
 The −5 reserves space for Fibre's 5-byte blob header (1 version byte and 4 bytes for the data length)
 Other sizes will be rejected with `413`.
-Fibre encodes and charges every blob as at least 256 KiB (4096 rows × 64-byte minimum row), so blobs of 128 KiB − 5 to 256 KiB − 5 bytes pay for padding.
+Fibre encodes and charges every blob as at least 256 KiB (4096 rows × 64-byte minimum row), so blobs below 256 KiB − 5 bytes pay for padding.
 
 The gateway returns exactly the bytes you put. It never strips padding. If your data is smaller than the minimum, pad it yourself and store the real length.
 If your data is larger than the maximum, split it into chunks and embed metadata to allow reconstruction of the original blob.
