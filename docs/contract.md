@@ -4,7 +4,7 @@
 |---|---|
 | Endpoint | `https://cf.celestia-corto.com:8443`, round-robin over the instances serving traffic. Chain `corto-10` |
 | Auth | Bearer tokens issued by Celestia |
-| Blob size | 33,554,427 through 134,217,723 bytes, inclusive, excluding the 5-byte blob header added by the gateway ([blob sizes](client-guide.md#blob-sizes)) |
+| Blob size | 131,067 through 134,217,723 bytes, inclusive, excluding the 5-byte blob header added by the gateway ([blob sizes](client-guide.md#blob-sizes)) |
 | Put | Returns only after the chain confirms the blob, with a receipt and a commitment proof |
 | Availability | A `200` put means the blob is available: validators holding at least 2/3 of the stake signed that they store their pieces, and the chain accepted the payment. It stays readable for the retention period, even if some validators go offline |
 | Get | Returns exactly the bytes that were put, with an exact `Content-Length` |

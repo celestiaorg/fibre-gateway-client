@@ -28,7 +28,7 @@ Stores one blob. The response comes after the chain confirms the blob, so a put 
 | Item | Value |
 |---|---|
 | `Content-Type` | `application/octet-stream`, exactly one header |
-| `Content-Length` | Required. 33,554,427 through 134,217,723 bytes (32 MiB − 5 through 128 MiB − 5). Chunked uploads are rejected |
+| `Content-Length` | Required. 131,067 through 134,217,723 bytes (128 KiB − 5 through 128 MiB − 5). Chunked uploads are rejected |
 | Query string | None allowed |
 | Body | The blob bytes |
 
