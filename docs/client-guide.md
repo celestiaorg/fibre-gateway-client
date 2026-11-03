@@ -29,7 +29,7 @@ using the provided library (see Rust example below).
 | Endpoint | `https://cf.celestia-corto.com:8443` |
 | Token | A bearer token from Celestia, sent out of band |
 | Code | Read access to [celestiaorg/fibre-gateway-client](https://github.com/celestiaorg/fibre-gateway-client), for the Rust and Python libraries |
-| A test blob | 33,554,427 to 134,217,723 bytes (32 MiB − 5 to 128 MiB − 5) |
+| A test blob | 131,067 to 134,217,723 bytes (128 KiB − 5 to 128 MiB − 5) |
 
 Note: The −5 reserves space for Fibre's 5-byte blob header. The gateway adds this header for you; send only your data.
 Send the token using an authroization header (`Authorization: Bearer <token>`) on every request.
@@ -136,7 +136,7 @@ The `Client` already uses the correct timeouts (160 s put, 130 s get, 10 s conne
 - [Errors and retries](#errors-and-retries): which errors to retry, and why a retried put may store a second copy.
 - [Limits](#limits): sizes, concurrency per instance, retention.
 - [Connect](#connect): keep-alive and spreading load over instances.
-- [Blob sizes](#blob-sizes): sizes that waste no padding.
+- [Blob sizes](#blob-sizes): the size range, and which blobs pay for padding.
 - [Retention and what to store](#retention-and-what-to-store): keep the `blob_id`, the put time and, if you padded, the real length. Blobs can be read for 24 h.
 - [Capacity](#capacity): reserve instances before a large job.
 - [On-chain check](#on-chain-check-optional) (optional): confirm the chain accepted the payment.
@@ -149,7 +149,7 @@ Support: `<support contact>`.
 
 | Term | Meaning |
 |---|---|
-| Blob | The bytes you put, 32 MiB − 5 to 128 MiB − 5 |
+| Blob | The bytes you put, 128 KiB − 5 to 128 MiB − 5 |
 | Rows | The blob is laid out as 4096 equal rows: a 5-byte header, your data, then zero padding. The network adds 12,288 parity rows |
 | Row root | Merkle root over all 16,384 rows |
 | RLC | Random linear combination: one 16-byte value per row, with coefficients derived from the row root. It ties every row's content to the commitment |
@@ -191,9 +191,10 @@ Celestia will issue you tokens out-of-band. Reach out via Slack or email if addi
 
 ## Blob sizes
 
-A put accepts 33,554,427 through 134,217,723 bytes (32 MiB − 5 through 128 MiB − 5).
+A put accepts 131,067 through 134,217,723 bytes (128 KiB − 5 through 128 MiB − 5).
 The −5 reserves space for Fibre's 5-byte blob header (1 version byte and 4 bytes for the data length)
 Other sizes will be rejected with `413`.
+Fibre encodes and charges every blob as at least 256 KiB (4096 rows × 64-byte minimum row), so blobs of 128 KiB − 5 to 256 KiB − 5 bytes pay for padding.
 
 The gateway returns exactly the bytes you put. It never strips padding. If your data is smaller than the minimum, pad it yourself and store the real length.
 If your data is larger than the maximum, split it into chunks and embed metadata to allow reconstruction of the original blob.
@@ -202,7 +203,7 @@ If your data is larger than the maximum, split it into chunks and embed metadata
 
 | Limit | Value |
 |---|---|
-| Blob size | 33,554,427 to 134,217,723 bytes |
+| Blob size | 131,067 to 134,217,723 bytes |
 | Concurrent puts per instance | 48. We recommend no more than 32 |
 | Concurrent gets per instance | 32 |
 | Request headers | 16 KiB, sent within 5 s |
@@ -429,7 +430,7 @@ HEADERS = {"Authorization": f"Bearer {TOKEN}"}
 
 
 def put(data: bytes) -> dict:
-    assert 33_554_427 <= len(data) <= 134_217_723
+    assert 131_067 <= len(data) <= 134_217_723
     r = requests.post(
         f"{BASE}/v1/put", data=data, timeout=(10, 160),
         headers={**HEADERS, "Content-Type": "application/octet-stream"},

@@ -37,7 +37,7 @@ let back = client.get(&receipt.blob_id).await?;
 - Without it you get the receipt types and `verify`, for use with your own HTTP stack.
   Call `verify(&data, &put.receipt, &put.commitment_proof)` after every put.
 
-Blobs are 32 MiB − 5 to 128 MiB − 5 bytes and can be read for 24 h after the put.
+Blobs are 128 KiB − 5 to 128 MiB − 5 bytes and can be read for 24 h after the put.
 You need a bearer token from Celestia.
 
 License: Apache-2.0.
