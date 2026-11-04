@@ -435,8 +435,8 @@ components:
         minutes:
           type: integer
           minimum: 1
-          maximum: 120
-          description: How long to hold the reservation.
+          maximum: 1440
+          description: How long to hold the reservation, in minutes (up to 24 h).
     CapacityStatus:
       type: object
       additionalProperties: false
