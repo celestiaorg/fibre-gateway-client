@@ -9,7 +9,7 @@ For what we promise, read the [service contract](contract.md).
 
 | Item | Value |
 |---|---|
-| Base URL | `https://cf.celestia-corto.com:8443` |
+| Base URL | `https://gateway.celestia-corto.com:8443` |
 | Endpoints | `POST /v1/put`, `POST /v1/get`, `POST`, `GET` and `DELETE /v1/capacity`, `GET /v1/capacity/load`. Any other path or method returns `404 not_found` |
 | Auth | Exactly one header, `Authorization: Bearer <token>` (see [Tokens](client-guide.md#tokens)) |
 | Transport | HTTPS only, TLS 1.2 or newer. Plain HTTP gets a plain-text `400` |
@@ -40,13 +40,13 @@ The size is checked before the body is read.
 `200`, `Content-Type: application/json`, exactly these five fields:
 
 ```json
-{"chain_id":"corto-10","tx_hash":"<64 hex>","blob_id":"<66 hex>","promise_height":123,
+{"chain_id":"corto-1","tx_hash":"<64 hex>","blob_id":"<66 hex>","promise_height":123,
  "commitment_proof":{"row_root_siblings":["<64 hex>","<64 hex>"]}}
 ```
 
 | Field | Format | Meaning |
 |---|---|---|
-| `chain_id` | string | The chain, `corto-10` |
+| `chain_id` | string | The chain, `corto-1` |
 | `tx_hash` | 64 hex characters | The `MsgPayForFibre` transaction that paid for the blob |
 | `blob_id` | 66 hex characters | Version byte `00`, then the 32-byte [commitment](client-guide.md#terms) |
 | `promise_height` | integer, 1 to 2^63 − 1 | Height of the payment promise. Not the block that included the transaction |
@@ -91,7 +91,7 @@ The body is the whole blob, exactly the bytes you put. Blobs can be read for 24 
 ## `/v1/capacity`
 
 Reserves gateway instances before a large job. When to use it: [Capacity](client-guide.md#capacity).
-The same is available as a web page at `https://cf.celestia-corto.com:8443/ui`. Sign in there with your token.
+The same is available as a web page at `https://gateway.celestia-corto.com:8443/ui`. Sign in there with your token.
 
 | Request | Body | Response |
 |---|---|---|
