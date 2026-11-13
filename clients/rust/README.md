@@ -15,7 +15,7 @@ use fibre_gateway_client::Client;
 
 // Run inside an async function on a Tokio runtime.
 let data = Bytes::from(data);
-let client = Client::new("https://cf.celestia-corto.com:8443", token);
+let client = Client::new("https://gateway.celestia-corto.com:8443", token);
 
 // `put` checks the commitment against `data` before it returns.
 // There is no verification left for you to do.
