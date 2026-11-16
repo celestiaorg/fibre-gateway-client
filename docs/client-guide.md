@@ -26,7 +26,7 @@ using the provided library (see Rust example below).
 
 | Item | Value |
 |---|---|
-| Endpoint | `https://cf.celestia-corto.com:8443` |
+| Endpoint | `https://gateway.celestia-corto.com:8443` |
 | Token | A bearer token from Celestia, sent out of band |
 | Code | Read access to [celestiaorg/fibre-gateway-client](https://github.com/celestiaorg/fibre-gateway-client), for the Rust and Python libraries |
 | A test blob | 131,067 to 134,217,723 bytes (128 KiB − 5 to 128 MiB − 5) |
@@ -45,13 +45,13 @@ To minimize costs, the gateway scales down after inactivity. Before running a lo
 | `DELETE /v1/capacity` | Release your reservation early |
 | `GET /v1/capacity/load?minutes=60` | Fleet put load history (what the page plots) |
 
-Or use the web page at `https://cf.celestia-corto.com:8443/ui`: enter GiB/s and minutes, and it tells you when the
+Or use the web page at `https://gateway.celestia-corto.com:8443/ui`: enter GiB/s and minutes, and it tells you when the
 capacity is serving.
 
 ### Curl (Put and Get without Verification)
 
 ```sh
-GW=https://cf.celestia-corto.com:8443
+GW=https://gateway.celestia-corto.com:8443
 TOKEN=<your token>
 
 head -c 134217723 /dev/urandom > blob.bin   # 128 MiB − 5, the largest size
@@ -73,7 +73,7 @@ The put takes a few seconds: it returns after the chain confirms the blob.
 `put.json` looks like this:
 
 ```json
-{"chain_id":"corto-10","tx_hash":"<64 hex>","blob_id":"<66 hex>","promise_height":123,
+{"chain_id":"corto-1","tx_hash":"<64 hex>","blob_id":"<66 hex>","promise_height":123,
  "commitment_proof":{"row_root_siblings":["<64 hex>","<64 hex>"]}}
 ```
 
@@ -97,7 +97,7 @@ This is [clients/rust/examples/quickstart.rs](../clients/rust/examples/quickstar
 use bytes::Bytes;
 use fibre_gateway_client::Client;
 
-const GATEWAY: &str = "https://cf.celestia-corto.com:8443";
+const GATEWAY: &str = "https://gateway.celestia-corto.com:8443";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -162,13 +162,10 @@ Support: `<support contact>`.
 
 | Item | Value |
 |---|---|
-| Endpoint | `https://cf.celestia-corto.com:8443`. Port 8443 only |
-| Private endpoint | `https://private.cf.celestia-corto.com:8443`: the same instances on their private IPs. Only for clients in the gateway's VPC or a peered VPC, in the gateway's Availability Zone, AZ ID `euc1-az2` (match the ID, not the AZ name: names differ per account). Same-AZ traffic is free of AWS data-transfer charges. From anywhere else it does not connect |
+| Endpoint | `https://gateway.celestia-corto.com:8443`. Port 8443 only |
 | DNS | The name round-robins over the instances serving traffic |
-| TLS | TLS 1.2 or newer. Public Let's Encrypt certificate for `cf.celestia-corto.com` and `*.cf.celestia-corto.com`|
-| Chain | `corto-10` |
-
-The same certificate and tokens work on every name.
+| TLS | TLS 1.2 or newer. Public Let's Encrypt certificate for `gateway.celestia-corto.com` |
+| Chain | `corto-1` |
 
 HTTP client settings:
 
@@ -316,11 +313,11 @@ the reference verifier in [`clients/python/fibre_verify.py`](../clients/python/f
 ### On-chain check (optional)
 
 The commitment check shows that `blob_id` names your data. It does not show that the chain accepted it.
-Fetch the transaction from any validator RPC, `v0` through `v9`. They use HTTPS with a
-Let's Encrypt certificate; plain `http://` is refused.
+Fetch the transaction from a CometBFT RPC endpoint of chain `corto-1` that you have access to
+(`$RPC` below). The gateway does not proxy RPC.
 
 ```sh
-curl -s "https://v0.cf.celestia-corto.com:26657/tx?hash=0x<tx_hash>"
+curl -s "$RPC/tx?hash=0x<tx_hash>"
 ```
 
 Check, in `result.tx_result`:
@@ -409,7 +406,7 @@ Examples, run from `clients/rust`:
 
 ```sh
 TOKEN=<token> cargo run --release --features http --example quickstart -- blob.bin
-GW=https://cf.celestia-corto.com:8443 TOKEN=<token> RPC=https://v0.cf.celestia-corto.com:26657 \
+GW=https://gateway.celestia-corto.com:8443 TOKEN=<token> RPC=<corto-1 RPC URL> \
   cargo run --release --features http --example put_verify_get -- blob.bin
 ```
 
@@ -424,7 +421,7 @@ A put and get with `requests` (`pip install requests`):
 import requests
 from fibre_verify import verify  # clients/python/fibre_verify.py
 
-BASE = "https://cf.celestia-corto.com:8443"
+BASE = "https://gateway.celestia-corto.com:8443"
 TOKEN = "<token>"
 HEADERS = {"Authorization": f"Bearer {TOKEN}"}
 

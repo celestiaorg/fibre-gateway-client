@@ -2,7 +2,7 @@
 
 | Item | Promise |
 |---|---|
-| Endpoint | `https://cf.celestia-corto.com:8443`, round-robin over the instances serving traffic. Chain `corto-10` |
+| Endpoint | `https://gateway.celestia-corto.com:8443`, round-robin over the instances serving traffic. Chain `corto-1` |
 | Auth | Bearer tokens issued by Celestia |
 | Blob size | 131,067 through 134,217,723 bytes, inclusive, excluding the 5-byte blob header added by the gateway ([blob sizes](client-guide.md#blob-sizes)) |
 | Put | Returns only after the chain confirms the blob, with a receipt and a commitment proof |

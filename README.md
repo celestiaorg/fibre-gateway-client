@@ -22,7 +22,7 @@ serde_json = "1"
 use bytes::Bytes;
 use fibre_gateway_client::Client;
 
-const GATEWAY: &str = "https://cf.celestia-corto.com:8443";
+const GATEWAY: &str = "https://gateway.celestia-corto.com:8443";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

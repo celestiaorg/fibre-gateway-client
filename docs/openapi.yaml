@@ -6,7 +6,7 @@ info:
     HTTPS gateway that stores one blob per put on Celestia Fibre and reads it
     back by blob_id. Covers the client endpoints only.
 servers:
-  - url: https://cf.celestia-corto.com:8443
+  - url: https://gateway.celestia-corto.com:8443
 security:
   - bearer: []
 tags:
