@@ -22,7 +22,7 @@ serde_json = "1"
 use bytes::Bytes;
 use fibre_gateway_client::Client;
 
-const GATEWAY: &str = "https://gateway.celestia-corto.com:8443";
+const GATEWAY: &str = "https://<gateway-host>:8443";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -53,7 +53,9 @@ TOKEN=<your token> cargo run --release --features http --example quickstart -- b
 ## Available Methods
 
 - **Put** sends one blob (128 KiB–128 MiB) to Celestia on your behalf and returns once it is available, with its `blob_id`.
-- **Get** returns the blob by its `blob_id` for 24 h after the put.
+- **Get** returns the blob by its `blob_id` via `/v1/get` for 24 h after the put (Fibre retention).
+
+Usage is billed off-chain by Celestia Labs, and the gateway pays the on-chain fees. A put that times out has an unknown outcome: a retry may store and pay twice.
 
 ## Docs
 

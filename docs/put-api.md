@@ -9,10 +9,10 @@ For what we promise, read the [service contract](contract.md).
 
 | Item | Value |
 |---|---|
-| Base URL | `https://gateway.celestia-corto.com:8443` |
+| Base URL | `https://<gateway-host>:8443` |
 | Endpoints | `POST /v1/put`, `POST /v1/get`, `POST`, `GET` and `DELETE /v1/capacity`, `GET /v1/capacity/load`. Any other path or method returns `404 not_found` |
 | Auth | Exactly one header, `Authorization: Bearer <token>` (see [Tokens](client-guide.md#tokens)) |
-| Transport | HTTPS only, TLS 1.2 or newer. Plain HTTP gets a plain-text `400` |
+| Transport | HTTPS only, TLS 1.2 or newer. Cleartext to the TLS port fails the handshake |
 | Errors | JSON `{"error":"<code>"}` with `Content-Type: application/json` (see [Errors](#errors)) |
 | Caching | Every response has `Cache-Control: no-store` |
 
@@ -91,7 +91,6 @@ The body is the whole blob, exactly the bytes you put. Blobs can be read for 24 
 ## `/v1/capacity`
 
 Reserves gateway instances before a large job. When to use it: [Capacity](client-guide.md#capacity).
-The same is available as a web page at `https://gateway.celestia-corto.com:8443/ui`. Sign in there with your token.
 
 | Request | Body | Response |
 |---|---|---|

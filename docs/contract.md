@@ -2,7 +2,7 @@
 
 | Item | Promise |
 |---|---|
-| Endpoint | `https://gateway.celestia-corto.com:8443`, round-robin over the instances serving traffic. Chain `corto-1` |
+| Endpoint | `https://<gateway-host>:8443`, round-robin over the instances serving traffic. Chain `corto-1` |
 | Auth | Bearer tokens issued by Celestia |
 | Blob size | 131,067 through 134,217,723 bytes, inclusive, excluding the 5-byte blob header added by the gateway ([blob sizes](client-guide.md#blob-sizes)) |
 | Put | Returns only after the chain confirms the blob, with a receipt and a commitment proof |
@@ -12,8 +12,10 @@
 | Put deadline | 150 s |
 | Get deadline | 120 s |
 | Capacity per instance | 48 concurrent puts and 32 concurrent gets. Above that, `429` at once |
-| Payment | The gateway pays for every put, including retries |
-| Idempotency | None. A retried put may store a second copy |
+| Payment | Usage is billed off-chain by Celestia Labs. The gateway pays the on-chain fees for every put, including retries |
+| Idempotency | None. A put that times out has an unknown outcome: a retry may store, and pay, twice |
+
+`/v1/capacity*` is not available in this deployment.
 
 ## Clients must
 
@@ -24,7 +26,6 @@
 - Keep the `blob_id`. `/v1/get` takes it.
 - Use client timeouts of 160 s for put and 130 s for get.
 - Back off with jitter on `429` and `503`.
-- Reserve capacity before a job that needs more instances than are running, and wait `eta_seconds`.
 - Treat `502`, `504` and network errors during a put as an unknown outcome, then retry with a new request.
 
 ## Clients must not

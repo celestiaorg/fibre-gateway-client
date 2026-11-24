@@ -1,7 +1,7 @@
 //! Puts a file, verifies its commitment and the on-chain PayForFibre, then reads it back.
 //!
 //! ```sh
-//! GW=https://gateway.celestia-corto.com:8443 TOKEN=... RPC=<corto-1 CometBFT RPC URL> \
+//! GW=https://<gateway-host>:8443 TOKEN=... RPC=<corto-1 CometBFT RPC URL> \
 //!   cargo run --release --features http --example put_verify_get -- blob.bin
 //! ```
 
