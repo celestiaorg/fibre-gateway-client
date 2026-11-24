@@ -12,7 +12,7 @@ For what we promise, read the [service contract](contract.md).
 | Base URL | `https://<gateway-host>:8443` |
 | Endpoints | `POST /v1/put`, `POST /v1/get`, `POST`, `GET` and `DELETE /v1/capacity`, `GET /v1/capacity/load`. Any other path or method returns `404 not_found` |
 | Auth | Exactly one header, `Authorization: Bearer <token>` (see [Tokens](client-guide.md#tokens)) |
-| Transport | HTTPS only, TLS 1.2 or newer. Cleartext to the TLS port fails the handshake |
+| Transport | HTTPS only, TLS 1.2 or newer. Plain HTTP to the TLS port fails the handshake and gets a non-JSON `400` from the TLS layer |
 | Errors | JSON `{"error":"<code>"}` with `Content-Type: application/json` (see [Errors](#errors)) |
 | Caching | Every response has `Cache-Control: no-store` |
 

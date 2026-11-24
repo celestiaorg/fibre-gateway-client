@@ -13,7 +13,7 @@
 | Get deadline | 120 s |
 | Capacity per instance | 48 concurrent puts and 32 concurrent gets. Above that, `429` at once |
 | Payment | Usage is billed off-chain by Celestia Labs. The gateway pays the on-chain fees for every put, including retries |
-| Idempotency | None. A put that times out has an unknown outcome: a retry may store, and pay, twice |
+| Idempotency | None. A put that times out or fails with an unknown outcome (502, 504, network error) may have stored; a retry may store and pay twice |
 
 `/v1/capacity*` is not available in this deployment.
 

@@ -36,14 +36,7 @@ Send the token using an authroization header (`Authorization: Bearer <token>`) o
 
 ### Scaling
 
-To minimize costs, the gateway scales down after inactivity. Before running a load test, we recommend scaling it up manually to ensure that capacity is available.
-
-| Endpoint | Meaning |
-|---|---|
-| `POST /v1/capacity` with `{"gib_per_second":10,"minutes":60}` or `{"instances":20,"minutes":60}` | Keep at least that throughput or `instances` (2–20) up for `minutes` (1–1440, i.e. up to 24 h) |
-| `GET /v1/capacity` | Current reservations, fleet size and load |
-| `DELETE /v1/capacity` | Release your reservation early |
-| `GET /v1/capacity/load?minutes=60` | Fleet put load history |
+Capacity is managed by Celestia Labs; `/v1/capacity*` is not available in this deployment (see [Capacity](#capacity)). Ask us before a large load test.
 
 ### Curl (Put and Get without Verification)
 
@@ -135,7 +128,7 @@ The `Client` already uses the correct timeouts (160 s put, 130 s get, 10 s conne
 - [Connect](#connect): keep-alive and spreading load over instances.
 - [Blob sizes](#blob-sizes): the size range, and which blobs pay for padding.
 - [Retention and what to store](#retention-and-what-to-store): keep the `blob_id`, the put time and, if you padded, the real length. Blobs can be read for 24 h.
-- [Capacity](#capacity): reserve instances before a large job.
+- [Capacity](#capacity): not available in this deployment; ask us before a large job.
 - [On-chain check](#on-chain-check-optional) (optional): confirm the chain accepted the payment.
 
 The [service contract](contract.md) lists what we promise and measured performance. There is no SLA yet.
@@ -208,7 +201,7 @@ The put and get limits are per instance, fixed by the gateway, and shared by eve
 Fleet-wide capacity is therefore about 48 × `active` puts (see [Capacity](#capacity)), and only if your connections are spread over the instances (see [Connect](#connect)).
 
 A slot is held for the whole request, up to about 155 s for a put. Above the limit the gateway returns `429 capacity` at once; it does not queue.
-If you need more capacity, [reserve it](#capacity) or ask for more instances.
+If you need more capacity, ask us for more instances.
 
 ## Capacity
 
