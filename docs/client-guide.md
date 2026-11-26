@@ -26,7 +26,7 @@ using the provided library (see Rust example below).
 
 | Item | Value |
 |---|---|
-| Endpoint | `https://gateway.celestia-corto.com:8443` |
+| Endpoint | `https://<gateway-host>:8443` |
 | Token | A bearer token from Celestia, sent out of band |
 | Code | Read access to [celestiaorg/fibre-gateway-client](https://github.com/celestiaorg/fibre-gateway-client), for the Rust and Python libraries |
 | A test blob | 131,067 to 134,217,723 bytes (128 KiB − 5 to 128 MiB − 5) |
@@ -36,22 +36,12 @@ Send the token using an authroization header (`Authorization: Bearer <token>`) o
 
 ### Scaling
 
-To minimize costs, the gateway scales down after inactivity. Before running a load test, we recommend scaling it up manually to ensure that capacity is available.
-
-| Endpoint | Meaning |
-|---|---|
-| `POST /v1/capacity` with `{"gib_per_second":10,"minutes":60}` or `{"instances":20,"minutes":60}` | Keep at least that throughput or `instances` (2–20) up for `minutes` (1–1440, i.e. up to 24 h) |
-| `GET /v1/capacity` | Current reservations, fleet size and load |
-| `DELETE /v1/capacity` | Release your reservation early |
-| `GET /v1/capacity/load?minutes=60` | Fleet put load history (what the page plots) |
-
-Or use the web page at `https://gateway.celestia-corto.com:8443/ui`: enter GiB/s and minutes, and it tells you when the
-capacity is serving.
+Capacity is managed by Celestia Labs; `/v1/capacity*` is not available in this deployment (see [Capacity](#capacity)). Ask us before a large load test.
 
 ### Curl (Put and Get without Verification)
 
 ```sh
-GW=https://gateway.celestia-corto.com:8443
+GW=https://<gateway-host>:8443
 TOKEN=<your token>
 
 head -c 134217723 /dev/urandom > blob.bin   # 128 MiB − 5, the largest size
@@ -97,7 +87,7 @@ This is [clients/rust/examples/quickstart.rs](../clients/rust/examples/quickstar
 use bytes::Bytes;
 use fibre_gateway_client::Client;
 
-const GATEWAY: &str = "https://gateway.celestia-corto.com:8443";
+const GATEWAY: &str = "https://<gateway-host>:8443";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -138,7 +128,7 @@ The `Client` already uses the correct timeouts (160 s put, 130 s get, 10 s conne
 - [Connect](#connect): keep-alive and spreading load over instances.
 - [Blob sizes](#blob-sizes): the size range, and which blobs pay for padding.
 - [Retention and what to store](#retention-and-what-to-store): keep the `blob_id`, the put time and, if you padded, the real length. Blobs can be read for 24 h.
-- [Capacity](#capacity): reserve instances before a large job.
+- [Capacity](#capacity): not available in this deployment; ask us before a large job.
 - [On-chain check](#on-chain-check-optional) (optional): confirm the chain accepted the payment.
 
 The [service contract](contract.md) lists what we promise and measured performance. There is no SLA yet.
@@ -162,9 +152,9 @@ Support: `<support contact>`.
 
 | Item | Value |
 |---|---|
-| Endpoint | `https://gateway.celestia-corto.com:8443`. Port 8443 only |
+| Endpoint | `https://<gateway-host>:8443`. Port 8443 only |
 | DNS | The name round-robins over the instances serving traffic |
-| TLS | TLS 1.2 or newer. Public Let's Encrypt certificate for `gateway.celestia-corto.com` |
+| TLS | TLS 1.2 or newer. Public certificate for the gateway host |
 | Chain | `corto-1` |
 
 HTTP client settings:
@@ -211,9 +201,11 @@ The put and get limits are per instance, fixed by the gateway, and shared by eve
 Fleet-wide capacity is therefore about 48 × `active` puts (see [Capacity](#capacity)), and only if your connections are spread over the instances (see [Connect](#connect)).
 
 A slot is held for the whole request, up to about 155 s for a put. Above the limit the gateway returns `429 capacity` at once; it does not queue.
-If you need more capacity, [reserve it](#capacity) or ask for more instances.
+If you need more capacity, ask us for more instances.
 
 ## Capacity
+
+`/v1/capacity*` is not available in this deployment; this section applies only where it is enabled.
 
 A sudden large job can see `429` until enough capacity is ready.
 Before a large job, reserve a minimum number of instances for a while:
@@ -406,7 +398,7 @@ Examples, run from `clients/rust`:
 
 ```sh
 TOKEN=<token> cargo run --release --features http --example quickstart -- blob.bin
-GW=https://gateway.celestia-corto.com:8443 TOKEN=<token> RPC=<corto-1 RPC URL> \
+GW=https://<gateway-host>:8443 TOKEN=<token> RPC=<corto-1 RPC URL> \
   cargo run --release --features http --example put_verify_get -- blob.bin
 ```
 
@@ -421,7 +413,7 @@ A put and get with `requests` (`pip install requests`):
 import requests
 from fibre_verify import verify  # clients/python/fibre_verify.py
 
-BASE = "https://gateway.celestia-corto.com:8443"
+BASE = "https://<gateway-host>:8443"
 TOKEN = "<token>"
 HEADERS = {"Authorization": f"Bearer {TOKEN}"}
 

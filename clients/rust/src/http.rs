@@ -441,7 +441,7 @@ impl Default for Timeouts {
     }
 }
 
-/// Gateway client. `base_url` is like `https://gateway.celestia-corto.com:8443`.
+/// Gateway client. `base_url` is like `https://<gateway-host>:8443`.
 pub struct Client {
     transport: Transport,
     put_url: Url,
