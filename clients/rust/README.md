@@ -40,4 +40,6 @@ let back = client.get(&receipt.blob_id).await?;
 Blobs are 128 KiB − 5 to 128 MiB − 5 bytes and can be read for 24 h after the put.
 You need a bearer token from Celestia.
 
+For bounded Corto-1 write traffic, see the [`fibre-load` command](../../docs/load.md).
+
 License: Apache-2.0.

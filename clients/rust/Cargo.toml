@@ -29,7 +29,7 @@ http = ["dep:reqwest", "dep:bytes", "dep:tokio", "dep:serde_json"]
 base64 = "0.23"
 serde_json = "1"
 sha2 = "0.11"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "test-util"] }
 hyper = { version = "1", features = ["server", "http2"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
@@ -42,6 +42,11 @@ test = true
 [[example]]
 name = "quickstart"
 required-features = ["http"]
+
+[[example]]
+name = "fibre-load"
+required-features = ["http"]
+test = true
 
 [profile.dev.package."*"]
 opt-level = 3
